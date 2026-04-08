@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
+from cable_routing.debug_gui.backend.debug_board import DebugBoard
 from cable_routing.debug_gui.backend.debug_context import DebugContext
 from cable_routing.debug_gui.config.debug_config import DebugConfig
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -11,32 +12,27 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 class InitEnvironmentStep(BaseStep):
     name = "init_environment"
     description = (
-        "Initialize debug config, backend context, and optional camera preview."
+        "Initialize debug config, standalone debug board, and optional camera preview."
     )
 
     def __init__(self) -> None:
         super().__init__()
 
     def _create_debug_config(self) -> DebugConfig:
-        """
-        Create the standalone debug config.
-        """
         return DebugConfig()
 
     def _try_create_board(self, config: DebugConfig) -> Optional[Any]:
         """
-        Try to create the existing board object.
+        Create the new standalone debug board.
         """
         try:
-            from cable_routing.env.board.new_board import Board
-
-            return Board(config_path=config.board_cfg_path)
+            return DebugBoard(config_path=config.board_cfg_path)
         except Exception:
             return None
 
     def _try_create_camera(self) -> Optional[Any]:
         """
-        Try to create the existing camera subscriber.
+        Camera stays optional for now.
         """
         try:
             from cable_routing.env.ext_camera.ros.zed_camera import ZedCameraSubscriber
@@ -47,7 +43,7 @@ class InitEnvironmentStep(BaseStep):
 
     def _try_create_tracer(self) -> Optional[Any]:
         """
-        Try to create the existing cable tracer wrapper.
+        Tracer stays optional for now.
         """
         try:
             from cable_routing.handloom.handloom_pipeline.single_tracer import (
@@ -59,9 +55,6 @@ class InitEnvironmentStep(BaseStep):
             return None
 
     def _safe_get_camera_image(self, camera: Any) -> Optional[np.ndarray]:
-        """
-        Try several common camera getter names.
-        """
         if camera is None:
             return None
 
@@ -113,6 +106,7 @@ class InitEnvironmentStep(BaseStep):
             "robot_loaded": False,
             "camera_preview_available": preview is not None,
             "board_cfg_path": config.board_cfg_path,
+            "board_num_clips": board.num_clips() if board is not None else 0,
         }
 
         return result

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from cable_routing.debug_gui.backend.board_service import BoardService
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -12,19 +12,27 @@ class PrepareRoutingStep(BaseStep):
     def __init__(self, routing: Optional[List[int]] = None) -> None:
         super().__init__()
         self.board_service = BoardService()
-        self.default_routing = routing or [0, 1, 2, 3]
+        self.default_routing = routing
 
     def _resolve_routing(self, state: PipelineState) -> List[int]:
         """
         Routing priority:
         1. Existing state.routing
-        2. default routing passed into step
+        2. Step-specific routing
+        3. DebugConfig.default_routing
         """
         if state.routing is not None:
-            return state.routing
-        return list(self.default_routing)
+            return list(state.routing)
 
-    def run(self, state: PipelineState) -> Dict[str, Any]:
+        if self.default_routing is not None:
+            return list(self.default_routing)
+
+        if state.config is not None and hasattr(state.config, "default_routing"):
+            return list(state.config.default_routing)
+
+        raise RuntimeError("No routing available.")
+
+    def run(self, state: PipelineState) -> Dict[str, object]:
         if state.env is None:
             raise RuntimeError(
                 "Debug context not initialized. Run init_environment first."
@@ -34,9 +42,12 @@ class PrepareRoutingStep(BaseStep):
             raise RuntimeError("Board is not available in debug context.")
 
         routing = self._resolve_routing(state)
+
         debug_data = self.board_service.prepare_routing_debug_data(
             board=state.env.board,
             routing=routing,
+            image_width=state.config.fallback_image_width,
+            image_height=state.config.fallback_image_height,
         )
 
         state.routing = routing
@@ -47,5 +58,6 @@ class PrepareRoutingStep(BaseStep):
         return {
             "routing": routing,
             "num_clips": debug_data["num_clips"],
+            "clip_ids": debug_data["clip_ids"],
             "num_crossing_fixtures": len(debug_data["crossing_fixture_id_list"]),
         }

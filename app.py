@@ -23,7 +23,7 @@ from cable_routing.debug_gui.pipeline.steps.prepare_routing_step import (
 def build_runner() -> StepRunner:
     steps = [
         InitEnvironmentStep(),
-        PrepareRoutingStep(routing=[0, 1, 2, 3]),
+        PrepareRoutingStep(),  # use config.default_routing
     ]
     return StepRunner(steps)
 
