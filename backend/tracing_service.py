@@ -137,12 +137,61 @@ class TracingService:
             cv2.destroyWindow("Pick trace start point")
             return picked["pt"]
 
-        pt = pick_point_on_image(image_rgb)
-        start_points = [pt]
+        def pick_two_points_on_image(image):
+            import cv2
 
-        # snap start point to cable
+            picked = []
+            vis = image.copy()
+
+            def cb(event, x, y, flags, param):
+                if event == cv2.EVENT_LBUTTONDOWN and len(picked) < 2:
+                    picked.append((x, y))
+                    cv2.circle(vis, (x, y), 6, (0, 0, 255), -1)
+                    cv2.imshow("Pick 2 trace start points", vis)
+
+            cv2.imshow("Pick 2 trace start points", vis)
+            cv2.setMouseCallback("Pick 2 trace start points", cb)
+
+            while len(picked) < 2:
+                cv2.waitKey(10)
+
+            cv2.destroyWindow("Pick 2 trace start points")
+            return picked
+
+        def build_three_start_points_from_two_clicks(image_rgb, pt1_xy, pt2_xy):
+            pt1_xy = snap_to_bright_pixel(image_rgb, pt1_xy)
+            pt2_xy = snap_to_bright_pixel(image_rgb, pt2_xy)
+
+            mid_xy = (
+                int(round((pt1_xy[0] + pt2_xy[0]) / 2)),
+                int(round((pt1_xy[1] + pt2_xy[1]) / 2)),
+            )
+            mid_xy = snap_to_bright_pixel(image_rgb, mid_xy)
+
+            # tracer expects (y, x)
+            pt1_yx = (pt1_xy[1], pt1_xy[0])
+            mid_yx = (mid_xy[1], mid_xy[0])
+            pt2_yx = (pt2_xy[1], pt2_xy[0])
+
+            return [pt1_yx, mid_yx, pt2_yx]
+
+        picked_xy = pick_two_points_on_image(image_rgb)
+        print("clicked points (x,y):", picked_xy)
+
+        start_points = build_three_start_points_from_two_clicks(
+            image_rgb,
+            picked_xy[0],
+            picked_xy[1],
+        )
+
+        print("tracer start points (y,x):", start_points)
+
         # if start_points:
-        #     start_points = [snap_to_bright_pixel(image_rgb, start_points[0])]
+        #     snapped_xy = snap_to_bright_pixel(image_rgb, start_points[0])
+        #     print("snapped start (x,y):", snapped_xy)
+
+        #     start_points = [(snapped_xy[1], snapped_xy[0])]
+        #     print("tracer start (y,x):", start_points)
 
         import traceback
 
