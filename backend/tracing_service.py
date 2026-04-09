@@ -3,6 +3,94 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+import traceback
+
+
+def pick_two_points_on_image(image):
+    import cv2
+
+    picked = []
+    vis = image.copy()
+
+    def cb(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN and len(picked) < 2:
+            picked.append((x, y))
+            cv2.circle(vis, (x, y), 6, (0, 0, 255), -1)
+            cv2.imshow("Pick 2 trace start points", vis)
+
+    cv2.imshow("Pick 2 trace start points", vis)
+    cv2.setMouseCallback("Pick 2 trace start points", cb)
+
+    while len(picked) < 2:
+        cv2.waitKey(10)
+
+    cv2.destroyWindow("Pick 2 trace start points")
+    return picked
+
+
+def build_three_start_points_from_two_clicks(image_rgb, pt1_xy, pt2_xy):
+    pt1_xy = snap_to_bright_pixel(image_rgb, pt1_xy)
+    pt2_xy = snap_to_bright_pixel(image_rgb, pt2_xy)
+
+    mid_xy = (
+        int(round((pt1_xy[0] + pt2_xy[0]) / 2)),
+        int(round((pt1_xy[1] + pt2_xy[1]) / 2)),
+    )
+    mid_xy = snap_to_bright_pixel(image_rgb, mid_xy)
+
+    # tracer expects (y, x)
+    pt1_yx = (pt1_xy[1], pt1_xy[0])
+    mid_yx = (mid_xy[1], mid_xy[0])
+    pt2_yx = (pt2_xy[1], pt2_xy[0])
+
+    return [pt1_yx, mid_yx, pt2_yx]
+
+
+def build_three_start_points_from_start_and_direction(
+    image_rgb,
+    start_xy,
+    direction_xy,
+    step_px=10,
+):
+    import numpy as np
+
+    start_xy = snap_to_bright_pixel(image_rgb, start_xy)
+    direction_xy = snap_to_bright_pixel(image_rgb, direction_xy)
+
+    start = np.array(start_xy, dtype=float)
+    direction_point = np.array(direction_xy, dtype=float)
+
+    direction = direction_point - start
+    norm = np.linalg.norm(direction)
+
+    if norm < 1e-6:
+        # fallback: arbitrary horizontal direction
+        direction = np.array([1.0, 0.0], dtype=float)
+        norm = 1.0
+
+    direction = direction / norm
+
+    p0_xy = start
+    p1_xy = start + direction * step_px
+    p2_xy = start + direction * (2 * step_px)
+
+    # optional: snap generated points back to bright cable pixels
+    p0_xy = snap_to_bright_pixel(
+        image_rgb, (int(round(p0_xy[0])), int(round(p0_xy[1])))
+    )
+    p1_xy = snap_to_bright_pixel(
+        image_rgb, (int(round(p1_xy[0])), int(round(p1_xy[1])))
+    )
+    p2_xy = snap_to_bright_pixel(
+        image_rgb, (int(round(p2_xy[0])), int(round(p2_xy[1])))
+    )
+
+    # tracer expects (y, x)
+    return [
+        (p0_xy[1], p0_xy[0]),
+        (p1_xy[1], p1_xy[0]),
+        (p2_xy[1], p2_xy[0]),
+    ]
 
 
 def snap_to_bright_pixel(image, pt, radius=15):
@@ -120,80 +208,17 @@ class TracingService:
         #     viz=viz,
         # )
 
-        def pick_point_on_image(image):
-            picked = {"pt": None}
-            vis = image.copy()
-
-            def cb(event, x, y, flags, param):
-                if event == cv2.EVENT_LBUTTONDOWN:
-                    picked["pt"] = (x, y)
-
-            cv2.imshow("Pick trace start point", vis)
-            cv2.setMouseCallback("Pick trace start point", cb)
-
-            while picked["pt"] is None:
-                cv2.waitKey(10)
-
-            cv2.destroyWindow("Pick trace start point")
-            return picked["pt"]
-
-        def pick_two_points_on_image(image):
-            import cv2
-
-            picked = []
-            vis = image.copy()
-
-            def cb(event, x, y, flags, param):
-                if event == cv2.EVENT_LBUTTONDOWN and len(picked) < 2:
-                    picked.append((x, y))
-                    cv2.circle(vis, (x, y), 6, (0, 0, 255), -1)
-                    cv2.imshow("Pick 2 trace start points", vis)
-
-            cv2.imshow("Pick 2 trace start points", vis)
-            cv2.setMouseCallback("Pick 2 trace start points", cb)
-
-            while len(picked) < 2:
-                cv2.waitKey(10)
-
-            cv2.destroyWindow("Pick 2 trace start points")
-            return picked
-
-        def build_three_start_points_from_two_clicks(image_rgb, pt1_xy, pt2_xy):
-            pt1_xy = snap_to_bright_pixel(image_rgb, pt1_xy)
-            pt2_xy = snap_to_bright_pixel(image_rgb, pt2_xy)
-
-            mid_xy = (
-                int(round((pt1_xy[0] + pt2_xy[0]) / 2)),
-                int(round((pt1_xy[1] + pt2_xy[1]) / 2)),
-            )
-            mid_xy = snap_to_bright_pixel(image_rgb, mid_xy)
-
-            # tracer expects (y, x)
-            pt1_yx = (pt1_xy[1], pt1_xy[0])
-            mid_yx = (mid_xy[1], mid_xy[0])
-            pt2_yx = (pt2_xy[1], pt2_xy[0])
-
-            return [pt1_yx, mid_yx, pt2_yx]
-
         picked_xy = pick_two_points_on_image(image_rgb)
         print("clicked points (x,y):", picked_xy)
 
-        start_points = build_three_start_points_from_two_clicks(
+        start_points = build_three_start_points_from_start_and_direction(
             image_rgb,
-            picked_xy[0],
-            picked_xy[1],
+            picked_xy[0],  # first click = start
+            picked_xy[1],  # second click = direction
+            step_px=20,
         )
 
-        print("tracer start points (y,x):", start_points)
-
-        # if start_points:
-        #     snapped_xy = snap_to_bright_pixel(image_rgb, start_points[0])
-        #     print("snapped start (x,y):", snapped_xy)
-
-        #     start_points = [(snapped_xy[1], snapped_xy[0])]
-        #     print("tracer start (y,x):", start_points)
-
-        import traceback
+        print("generated tracer start points (y,x):", start_points)
 
         try:
             result = tracer.trace(
