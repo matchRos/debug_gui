@@ -31,8 +31,14 @@ class InitEnvironmentStep(BaseStep):
 
     def _try_create_camera(self) -> Tuple[Optional[Any], Optional[str]]:
         try:
+            import rospy
             from cable_routing.env.ext_camera.ros.zed_camera import ZedCameraSubscriber
 
+            if not rospy.core.is_initialized():
+                rospy.init_node(
+                    "debug_gui_camera", anonymous=True, disable_signals=True
+                )
+            rospy.sleep(1.0)
             return ZedCameraSubscriber(), None
         except Exception as exc:
             return None, str(exc)

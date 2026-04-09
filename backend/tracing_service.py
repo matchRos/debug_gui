@@ -5,6 +5,30 @@ import cv2
 import numpy as np
 
 
+def snap_to_bright_pixel(image, pt, radius=15):
+    import cv2
+    import numpy as np
+
+    x, y = pt
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+    y0 = max(0, y - radius)
+    y1 = min(gray.shape[0], y + radius + 1)
+    x0 = max(0, x - radius)
+    x1 = min(gray.shape[1], x + radius + 1)
+
+    patch = gray[y0:y1, x0:x1]
+    ys, xs = np.where(patch > 150)
+
+    if len(xs) == 0:
+        return pt
+
+    d2 = (xs + x0 - x) ** 2 + (ys + y0 - y) ** 2
+    i = np.argmin(d2)
+
+    return (int(xs[i] + x0), int(ys[i] + y0))
+
+
 class TracingService:
     """
     Standalone helper for image acquisition, trace execution, and visualization.
@@ -89,12 +113,81 @@ class TracingService:
         if tracer is None:
             raise RuntimeError("Tracer object is not available.")
 
-        path, status = tracer.trace(
-            img=image_rgb,
-            start_points=start_points,
-            end_points=end_points,
-            viz=viz,
-        )
+        # path, status = tracer.trace(
+        #     img=image_rgb,
+        #     start_points=start_points,
+        #     end_points=end_points,
+        #     viz=viz,
+        # )
+
+        def pick_point_on_image(image):
+            picked = {"pt": None}
+            vis = image.copy()
+
+            def cb(event, x, y, flags, param):
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    picked["pt"] = (x, y)
+
+            cv2.imshow("Pick trace start point", vis)
+            cv2.setMouseCallback("Pick trace start point", cb)
+
+            while picked["pt"] is None:
+                cv2.waitKey(10)
+
+            cv2.destroyWindow("Pick trace start point")
+            return picked["pt"]
+
+        pt = pick_point_on_image(image_rgb)
+        start_points = [pt]
+
+        # snap start point to cable
+        # if start_points:
+        #     start_points = [snap_to_bright_pixel(image_rgb, start_points[0])]
+
+        import traceback
+
+        try:
+            result = tracer.trace(
+                img=image_rgb,
+                start_points=start_points,
+                end_points=end_points,
+                viz=viz,
+            )
+
+            if result is None:
+                raise RuntimeError(
+                    f"Tracing failed. The start point is likely not on the cable or the analytic tracer could not initialize from start_points={start_points}."
+                )
+
+            path, status = result
+        except Exception as e:
+            print("\n=== TRACE ERROR ===")
+            print(f"type: {type(e).__name__}")
+            print(f"message: {e}")
+            print(f"start_points type: {type(start_points)}")
+            print(f"start_points value: {start_points}")
+            if start_points is not None:
+                for i, p in enumerate(start_points):
+                    try:
+                        arr = np.asarray(p)
+                        print(
+                            f"start_points[{i}] -> type={type(p)}, shape={arr.shape}, value={p}"
+                        )
+                    except Exception:
+                        print(f"start_points[{i}] -> type={type(p)}, value={p}")
+            print(f"end_points type: {type(end_points)}")
+            print(f"end_points value: {end_points}")
+            if end_points is not None:
+                for i, p in enumerate(end_points):
+                    try:
+                        arr = np.asarray(p)
+                        print(
+                            f"end_points[{i}] -> type={type(p)}, shape={arr.shape}, value={p}"
+                        )
+                    except Exception:
+                        print(f"end_points[{i}] -> type={type(p)}, value={p}")
+            traceback.print_exc()
+            raise
 
         return {
             "path_in_pixels": path,
