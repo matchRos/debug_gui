@@ -7,6 +7,7 @@ from cable_routing.debug_gui.backend.debug_context import DebugContext
 from cable_routing.debug_gui.config.debug_config import DebugConfig
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
+from autolab_core import RigidTransform
 
 
 class InitEnvironmentStep(BaseStep):
@@ -90,6 +91,20 @@ class InitEnvironmentStep(BaseStep):
             board=board,
             tracer=tracer,
         )
+
+        # Load camera-to-base transforms (extrinsics)
+        try:
+            context.T_CAM_BASE = {
+                "left": RigidTransform.load(
+                    config.cam_to_robot_left_trans_path
+                ).as_frames(from_frame="zed", to_frame="base_link"),
+                "right": RigidTransform.load(
+                    config.cam_to_robot_right_trans_path
+                ).as_frames(from_frame="zed", to_frame="base_link"),
+            }
+        except Exception as exc:
+            context.T_CAM_BASE = None
+            print("Warning: Failed to load T_CAM_BASE:", exc)
 
         state.config = config
         state.env = context

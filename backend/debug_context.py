@@ -21,3 +21,5 @@ class DebugContext:
 
     t_cam_base_left: Optional[np.ndarray] = None
     t_cam_base_right: Optional[np.ndarray] = None
+
+    T_CAM_BASE: Optional[dict] = None

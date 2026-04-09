@@ -19,6 +19,7 @@ from cable_routing.debug_gui.pipeline.steps.prepare_routing_step import (
     PrepareRoutingStep,
 )
 from cable_routing.debug_gui.pipeline.steps.trace_cable_step import TraceCableStep
+from cable_routing.debug_gui.pipeline.steps.trace_to_world_step import TraceToWorldStep
 
 
 def build_runner() -> StepRunner:
@@ -26,6 +27,7 @@ def build_runner() -> StepRunner:
         InitEnvironmentStep(),
         PrepareRoutingStep(),
         TraceCableStep(),
+        TraceToWorldStep(),
     ]
     return StepRunner(steps)
 
