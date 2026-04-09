@@ -20,6 +20,14 @@ from cable_routing.debug_gui.pipeline.steps.prepare_routing_step import (
 )
 from cable_routing.debug_gui.pipeline.steps.trace_cable_step import TraceCableStep
 from cable_routing.debug_gui.pipeline.steps.trace_to_world_step import TraceToWorldStep
+from cable_routing.debug_gui.pipeline.steps.compute_orientation_step import (
+    ComputeOrientationStep,
+)
+from cable_routing.debug_gui.pipeline.steps.grasp_planning_step import GraspPlanningStep
+from cable_routing.debug_gui.pipeline.steps.grasp_pose_step import GraspPoseStep
+from cable_routing.debug_gui.pipeline.steps.visualize_grasps_step import (
+    VisualizeGraspsStep,
+)
 
 
 def build_runner() -> StepRunner:
@@ -28,6 +36,10 @@ def build_runner() -> StepRunner:
         PrepareRoutingStep(),
         TraceCableStep(),
         TraceToWorldStep(),
+        ComputeOrientationStep(),
+        GraspPlanningStep(),
+        GraspPoseStep(),
+        VisualizeGraspsStep(),
     ]
     return StepRunner(steps)
 

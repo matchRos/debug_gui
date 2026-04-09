@@ -4,7 +4,7 @@ import numpy as np
 
 from cable_routing.debug_gui.backend.debug_board import DebugBoard
 from cable_routing.debug_gui.backend.debug_context import DebugContext
-from cable_routing.debug_gui.config.debug_config import DebugConfig
+from cable_routing.debug_gui.configs.debug_config import DebugConfig
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 from autolab_core import RigidTransform
@@ -92,19 +92,21 @@ class InitEnvironmentStep(BaseStep):
             tracer=tracer,
         )
 
-        # Load camera-to-base transforms (extrinsics)
+        context.T_CAM_BASE = {}
+
         try:
-            context.T_CAM_BASE = {
-                "left": RigidTransform.load(
+            if config.cam_to_robot_left_trans_path:
+                context.T_CAM_BASE["left"] = RigidTransform.load(
                     config.cam_to_robot_left_trans_path
-                ).as_frames(from_frame="zed", to_frame="base_link"),
-                "right": RigidTransform.load(
+                ).as_frames(from_frame="zed", to_frame="base_link")
+
+            if config.cam_to_robot_right_trans_path:
+                context.T_CAM_BASE["right"] = RigidTransform.load(
                     config.cam_to_robot_right_trans_path
-                ).as_frames(from_frame="zed", to_frame="base_link"),
-            }
-        except Exception as exc:
-            context.T_CAM_BASE = None
-            print("Warning: Failed to load T_CAM_BASE:", exc)
+                ).as_frames(from_frame="zed", to_frame="base_link")
+
+        except Exception as e:
+            print(f"Warning: Failed to load T_CAM_BASE: {e}")
 
         state.config = config
         state.env = context

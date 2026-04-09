@@ -5,6 +5,9 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.path_projection_service import (
     PathProjectionService,
 )
+from cable_routing.env.ext_camera.utils.img_utils import (
+    get_world_coord_from_pixel_coord,
+)
 
 
 class TraceToWorldStep(BaseStep):
@@ -22,8 +25,20 @@ class TraceToWorldStep(BaseStep):
         if state.path_in_pixels is None:
             raise RuntimeError("No pixel path available. Run trace_cable first.")
 
-        # For now: fixed arm (can later come from config)
-        arm = "right"
+        # For now: choose available arm automatically
+        available_arms = list(getattr(state.env, "T_CAM_BASE", {}).keys())
+
+        if not available_arms:
+            raise RuntimeError("T_CAM_BASE is empty or missing.")
+
+        if "right" in available_arms:
+            arm = "right"
+        elif "left" in available_arms:
+            arm = "left"
+        else:
+            raise RuntimeError(
+                f"No valid arm found in T_CAM_BASE. Available keys: {available_arms}"
+            )
 
         path_world = self.service.convert_path_to_world(
             env=state.env,
