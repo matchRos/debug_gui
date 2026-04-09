@@ -18,12 +18,14 @@ from cable_routing.debug_gui.pipeline.steps.init_environment_step import (
 from cable_routing.debug_gui.pipeline.steps.prepare_routing_step import (
     PrepareRoutingStep,
 )
+from cable_routing.debug_gui.pipeline.steps.trace_cable_step import TraceCableStep
 
 
 def build_runner() -> StepRunner:
     steps = [
         InitEnvironmentStep(),
-        PrepareRoutingStep(),  # use config.default_routing
+        PrepareRoutingStep(),
+        TraceCableStep(),
     ]
     return StepRunner(steps)
 
