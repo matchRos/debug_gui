@@ -53,7 +53,7 @@ class VisualizationService:
             # label
             cv2.putText(
                 img,
-                f"{arm}_{i}",
+                f"{pose.get('arm', arm)}_{i}",
                 (u + 5, v - 5),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,

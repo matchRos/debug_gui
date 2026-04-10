@@ -16,6 +16,7 @@ class DebugConfig:
 
     fallback_image_width: int = 1500
     fallback_image_height: int = 800
+    grasp_offset_px: float = 10.0
 
     # Optional fallback image if no camera is available
     # debug_image_path: Optional[str] = None

@@ -21,7 +21,18 @@ class GraspPoseStep(BaseStep):
 
         poses = self.service.compute_grasp_poses(state.grasps)
 
+        # assign arm based on y-position
+        for pose in poses:
+            y = pose["position"][1]
+
+            if y > 0:
+                pose["arm"] = "right"
+            else:
+                pose["arm"] = "left"
+
         state.grasp_poses = poses
+        
+        print("Assigned arms:", [p["arm"] for p in poses])
 
         return {
             "poses_available": True,

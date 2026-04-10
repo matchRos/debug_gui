@@ -31,18 +31,32 @@ class GraspPlanningStep(BaseStep):
         first_target_id = routing[1]
         first_clip = clips[first_target_id]
 
-        target_px = np.array([first_clip.x, first_clip.y], dtype=float)
+        import numpy as np
 
+        first_target_id = routing[1]
+        first_clip = clips[first_target_id]
+
+        target_px = np.array([first_clip.x, first_clip.y], dtype=float)
         path_px = [
             np.asarray(p).squeeze()[:2].astype(float) for p in state.path_in_pixels
         ]
 
-        # find cable point closest to first routing object in pixel space
+        # 1) find cable point closest to first routing clip in pixel space
         dists = [np.linalg.norm(p - target_px) for p in path_px]
         closest_idx = int(np.argmin(dists))
 
-        # grasp a bit before the first routing object along the traced cable
-        grasp_idx = max(0, closest_idx - 10)
+        # 2) walk backwards along the cable and integrate arc length
+        grasp_offset_px = state.config.grasp_offset_px
+        arc_len = 0.0
+        grasp_idx = closest_idx
+
+        for i in range(closest_idx, 0, -1):
+            seg_len = np.linalg.norm(path_px[i] - path_px[i - 1])
+            arc_len += seg_len
+            grasp_idx = i - 1
+
+            if arc_len >= grasp_offset_px:
+                break
 
         pos = state.path_in_world[grasp_idx]
         tangent = state.path_tangents[grasp_idx]
@@ -56,7 +70,9 @@ class GraspPlanningStep(BaseStep):
         ]
 
         print(
-            f"First clip: {first_clip.clip_id}, closest_idx: {closest_idx}, grasp_idx: {grasp_idx}"
+            f"First clip: {first_clip.clip_id}, "
+            f"closest_idx: {closest_idx}, grasp_idx: {grasp_idx}, "
+            f"arc_len_px: {arc_len:.1f}"
         )
 
         state.grasps = grasps

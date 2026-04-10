@@ -23,15 +23,18 @@ class VisualizeGraspsStep(BaseStep):
             raise RuntimeError("No grasp poses available.")
 
         env = state.env
-        arm = "right"
+        img = state.rgb_image.copy()
 
-        img = self.service.draw_grasps(
-            image=state.rgb_image,
-            poses=state.grasp_poses,
-            intrinsic=env.camera.intrinsic,
-            T_cam_base=env.T_CAM_BASE[arm],
-            arm=arm,
-        )
+        for pose in state.grasp_poses:
+            arm = pose.get("arm", "right")
+
+            img = self.service.draw_grasps(
+                image=img,
+                poses=[pose],
+                intrinsic=env.camera.intrinsic,
+                T_cam_base=env.T_CAM_BASE[arm],
+                arm=arm,
+            )
 
         state.grasp_overlay = img
 
