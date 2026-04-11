@@ -35,6 +35,9 @@ class PipelineState:
 
     # Grasp preview
     grasp_preview: Optional[Dict[str, Any]] = None
+    
+    # Robot motion
+    robot_target_sent: bool = False
 
     # Metadata / logging
     logs: List[str] = field(default_factory=list)

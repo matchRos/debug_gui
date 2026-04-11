@@ -26,12 +26,12 @@ class GraspPoseStep(BaseStep):
             y = pose["position"][1]
 
             if y > 0:
-                pose["arm"] = "right"
-            else:
                 pose["arm"] = "left"
+            else:
+                pose["arm"] = "right"
 
         state.grasp_poses = poses
-        
+
         print("Assigned arms:", [p["arm"] for p in poses])
 
         return {
