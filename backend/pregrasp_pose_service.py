@@ -9,9 +9,13 @@ class PreGraspPoseService:
             pos = np.asarray(pose["position"]).astype(float)
             R = np.asarray(pose["rotation"]).astype(float)
 
+            print("grasp pose position:", pose["position"])
+
             # local z-axis of end effector
-            z_axis = R[:, 2]
-            pre_pos = pos + z_axis * offset
+
+            approach_axis = np.asarray(pose["approach_axis"]).astype(float)
+            approach_axis = approach_axis / (np.linalg.norm(approach_axis) + 1e-8)
+            pre_pos = pos - approach_axis * offset
 
             pre_pose = {
                 "position": pre_pos,

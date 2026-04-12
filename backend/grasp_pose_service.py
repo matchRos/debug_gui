@@ -17,11 +17,23 @@ class GraspPoseService:
         z_axis = np.cross(x_axis, y_axis)
         z_axis /= np.linalg.norm(z_axis) + 1e-8
 
-        R = np.stack([x_axis, y_axis, z_axis], axis=1)
+        # approach direction before the in-plane tool rotation
+        approach_axis = -z_axis.copy()
+
+        # flip tool z-axis while keeping a right-handed frame
+        z_axis = -z_axis
+        y_axis = -y_axis
+
+        # rotate tool frame by +90 deg around its local z-axis
+        x_axis_rot = y_axis
+        y_axis_rot = -x_axis
+
+        R = np.stack([x_axis_rot, y_axis_rot, z_axis], axis=1)
 
         return {
             "position": position,
             "rotation": R,
+            "approach_axis": approach_axis,
         }
 
     def compute_grasp_poses(self, grasps):
