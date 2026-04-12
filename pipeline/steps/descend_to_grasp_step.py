@@ -18,12 +18,12 @@ class DescendToGraspStep(BaseStep):
             rospy.init_node("debug_gui_descend_to_grasp", anonymous=True)
 
         self.pub_left = rospy.Publisher(
-            "/yumi/robl/moveit_target_pose",
+            "/yumi/robl/cartesian_pose_command",
             PoseStamped,
             queue_size=1,
         )
         self.pub_right = rospy.Publisher(
-            "/yumi/robr/moveit_target_pose",
+            "/yumi/robr/cartesian_pose_command",
             PoseStamped,
             queue_size=1,
         )
@@ -32,7 +32,7 @@ class DescendToGraspStep(BaseStep):
         if not hasattr(state, "grasp_poses"):
             raise RuntimeError("No grasp poses available.")
 
-        pose = state.grasp_poses[0]
+        pose = state.pregrasp_poses[0]
         pos = pose["position"]
         rot = pose["rotation"]
         arm = pose.get("arm", "right")
@@ -46,7 +46,7 @@ class DescendToGraspStep(BaseStep):
 
         msg = PoseStamped()
         msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = "yumi_base_link"
+        msg.header.frame_id = "world"
 
         msg.pose.position.x = float(pos[0])
         msg.pose.position.y = float(pos[1])

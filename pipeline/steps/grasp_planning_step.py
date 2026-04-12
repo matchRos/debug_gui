@@ -58,15 +58,37 @@ class GraspPlanningStep(BaseStep):
             if arc_len >= grasp_offset_px:
                 break
 
-        pos = state.path_in_world[grasp_idx]
-        tangent = state.path_tangents[grasp_idx]
+                # --- FIRST GRASP (near first routing object) ---
+        pos1 = state.path_in_world[grasp_idx]
+        tan1 = state.path_tangents[grasp_idx]
+
+        # --- SECOND GRASP (further back along cable) ---
+        second_offset_px = 2.0 * grasp_offset_px
+        arc_len2 = 0.0
+        grasp_idx2 = grasp_idx
+
+        for i in range(grasp_idx, 0, -1):
+            seg_len = np.linalg.norm(path_px[i] - path_px[i - 1])
+            arc_len2 += seg_len
+            grasp_idx2 = i - 1
+
+            if arc_len2 >= second_offset_px:
+                break
+
+        pos2 = state.path_in_world[grasp_idx2]
+        tan2 = state.path_tangents[grasp_idx2]
 
         grasps = [
             {
-                "position": pos,
-                "tangent": tangent,
+                "position": pos1,
+                "tangent": tan1,
                 "index": grasp_idx,
-            }
+            },
+            {
+                "position": pos2,
+                "tangent": tan2,
+                "index": grasp_idx2,
+            },
         ]
 
         print(
@@ -80,8 +102,5 @@ class GraspPlanningStep(BaseStep):
         return {
             "grasps_available": True,
             "num_grasps": len(grasps),
-            "first_grasp": {
-                "position": grasps[0]["position"].tolist(),
-                "tangent": grasps[0]["tangent"].tolist(),
-            },
+            "grasp_indices": [g["index"] for g in grasps],
         }

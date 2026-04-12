@@ -30,6 +30,10 @@ class GraspPoseService:
 
         R = np.stack([x_axis_rot, y_axis_rot, z_axis], axis=1)
 
+        # enforce table height
+        position = np.asarray(position).astype(float)
+        position[2] = 0.07  # table (0.05) + 2 cm safety
+
         return {
             "position": position,
             "rotation": R,

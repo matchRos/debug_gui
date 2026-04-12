@@ -21,7 +21,7 @@ class PreGraspPoseStep(BaseStep):
 
         pregrasp_poses = self.service.compute_pregrasp_poses(
             state.grasp_poses,
-            offset=0.2,
+            offset=0.08,
         )
 
         state.pregrasp_poses = pregrasp_poses
