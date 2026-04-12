@@ -31,6 +31,10 @@ from cable_routing.debug_gui.pipeline.steps.visualize_grasps_step import (
 from cable_routing.debug_gui.pipeline.steps.pregrasp_pose_step import PreGraspPoseStep
 from cable_routing.debug_gui.pipeline.steps.robot_motion_step import RobotMotionStep
 from cable_routing.debug_gui.pipeline.steps.home_arms_step import HomeArmsStep
+from cable_routing.debug_gui.pipeline.steps.descend_to_grasp_step import (
+    DescendToGraspStep,
+)
+from cable_routing.debug_gui.pipeline.steps.close_gripper_step import CloseGripperStep
 
 
 def build_runner() -> StepRunner:
@@ -46,6 +50,8 @@ def build_runner() -> StepRunner:
         VisualizeGraspsStep(),
         PreGraspPoseStep(),
         RobotMotionStep(),
+        DescendToGraspStep(),
+        CloseGripperStep(),
     ]
     return StepRunner(steps)
 
