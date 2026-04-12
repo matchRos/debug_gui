@@ -57,7 +57,7 @@ class RobotMotionStep(BaseStep):
         right_pos = right_pose["position"]
 
         # simple collision safety check
-        min_dist_xyz = 0.12  # 12 cm
+        min_dist_xyz = 0.1  # 10 cm
         dist_xyz = float(((left_pos - right_pos) ** 2).sum() ** 0.5)
 
         if dist_xyz < min_dist_xyz:

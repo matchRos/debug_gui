@@ -1,5 +1,7 @@
 from typing import Dict
+
 import numpy as np
+
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.grasp_planning_service import (
@@ -9,7 +11,7 @@ from cable_routing.debug_gui.backend.grasp_planning_service import (
 
 class GraspPlanningStep(BaseStep):
     name = "grasp_planning"
-    description = "Sample grasp points along cable."
+    description = "Sample two grasp points along cable for dual-arm grasping."
 
     def __init__(self):
         super().__init__()
@@ -22,17 +24,16 @@ class GraspPlanningStep(BaseStep):
         if not hasattr(state, "path_tangents"):
             raise RuntimeError("No tangents available.")
 
+        if state.path_in_pixels is None:
+            raise RuntimeError("No pixel path available.")
+
         routing = state.routing
         clips = state.clips
 
         if routing is None or len(routing) < 2:
             raise RuntimeError("Routing not available or too short.")
 
-        first_target_id = routing[1]
-        first_clip = clips[first_target_id]
-
-        import numpy as np
-
+        # Use the first routing object after the start object
         first_target_id = routing[1]
         first_clip = clips[first_target_id]
 
@@ -41,39 +42,38 @@ class GraspPlanningStep(BaseStep):
             np.asarray(p).squeeze()[:2].astype(float) for p in state.path_in_pixels
         ]
 
-        # 1) find cable point closest to first routing clip in pixel space
+        # 1) Find cable point closest to the first routing object in pixel space
         dists = [np.linalg.norm(p - target_px) for p in path_px]
         closest_idx = int(np.argmin(dists))
 
-        # 2) walk backwards along the cable and integrate arc length
+        # 2) First grasp: move backwards along cable from first routing object
         grasp_offset_px = state.config.grasp_offset_px
         arc_len = 0.0
-        grasp_idx = closest_idx
+        grasp_idx1 = closest_idx
 
         for i in range(closest_idx, 0, -1):
             seg_len = np.linalg.norm(path_px[i] - path_px[i - 1])
             arc_len += seg_len
-            grasp_idx = i - 1
+            grasp_idx1 = i - 1
 
             if arc_len >= grasp_offset_px:
                 break
 
-                # --- FIRST GRASP (near first routing object) ---
-        pos1 = state.path_in_world[grasp_idx]
-        tan1 = state.path_tangents[grasp_idx]
-
-        # --- SECOND GRASP (further back along cable) ---
-        second_offset_px = 2.0 * grasp_offset_px
+        # 3) Second grasp: move forwards along cable from first grasp
+        second_grasp_spacing_px = grasp_offset_px * 2.0
         arc_len2 = 0.0
-        grasp_idx2 = grasp_idx
+        grasp_idx2 = grasp_idx1
 
-        for i in range(grasp_idx, 0, -1):
-            seg_len = np.linalg.norm(path_px[i] - path_px[i - 1])
+        for i in range(grasp_idx1, len(path_px) - 1):
+            seg_len = np.linalg.norm(path_px[i + 1] - path_px[i])
             arc_len2 += seg_len
-            grasp_idx2 = i - 1
+            grasp_idx2 = i + 1
 
-            if arc_len2 >= second_offset_px:
+            if arc_len2 >= second_grasp_spacing_px:
                 break
+
+        pos1 = state.path_in_world[grasp_idx1]
+        tan1 = state.path_tangents[grasp_idx1]
 
         pos2 = state.path_in_world[grasp_idx2]
         tan2 = state.path_tangents[grasp_idx2]
@@ -82,7 +82,7 @@ class GraspPlanningStep(BaseStep):
             {
                 "position": pos1,
                 "tangent": tan1,
-                "index": grasp_idx,
+                "index": grasp_idx1,
             },
             {
                 "position": pos2,
@@ -93,8 +93,10 @@ class GraspPlanningStep(BaseStep):
 
         print(
             f"First clip: {first_clip.clip_id}, "
-            f"closest_idx: {closest_idx}, grasp_idx: {grasp_idx}, "
-            f"arc_len_px: {arc_len:.1f}"
+            f"closest_idx: {closest_idx}, "
+            f"grasp1_idx: {grasp_idx1}, grasp2_idx: {grasp_idx2}, "
+            f"grasp_offset_px: {grasp_offset_px}, "
+            f"second_spacing_px: {second_grasp_spacing_px}"
         )
 
         state.grasps = grasps
@@ -103,4 +105,12 @@ class GraspPlanningStep(BaseStep):
             "grasps_available": True,
             "num_grasps": len(grasps),
             "grasp_indices": [g["index"] for g in grasps],
+            "first_grasp": {
+                "position": grasps[0]["position"].tolist(),
+                "tangent": grasps[0]["tangent"].tolist(),
+            },
+            "second_grasp": {
+                "position": grasps[1]["position"].tolist(),
+                "tangent": grasps[1]["tangent"].tolist(),
+            },
         }

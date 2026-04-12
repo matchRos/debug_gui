@@ -21,14 +21,19 @@ class GraspPoseStep(BaseStep):
 
         poses = self.service.compute_grasp_poses(state.grasps)
 
-        # assign arm based on y-position
-        for pose in poses:
-            y = pose["position"][1]
+        # assign exactly one pose to each arm (dual-arm)
+        if len(poses) != 2:
+            raise RuntimeError("Dual-arm grasp requires exactly 2 grasp poses.")
 
-            if y > 0:
-                pose["arm"] = "left"
-            else:
-                pose["arm"] = "right"
+        # keep original grasp order:
+        # poses[0] = grasp near first peg
+        # poses[1] = grasp further back along cable
+        if poses[0]["position"][1] > poses[1]["position"][1]:
+            poses[0]["arm"] = "left"
+            poses[1]["arm"] = "right"
+        else:
+            poses[0]["arm"] = "right"
+            poses[1]["arm"] = "left"
 
         state.grasp_poses = poses
 

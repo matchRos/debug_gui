@@ -9,7 +9,7 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 
 class CloseGripperStep(BaseStep):
     name = "close_gripper"
-    description = "Close the selected gripper."
+    description = "Close both grippers for dual-arm grasping."
 
     def __init__(self):
         super().__init__()
@@ -21,25 +21,30 @@ class CloseGripperStep(BaseStep):
         if not hasattr(state, "grasp_poses"):
             raise RuntimeError("No grasp poses available.")
 
-        arm = state.grasp_poses[0].get("arm", "right")
+        rospy.wait_for_service("/yumi/gripper_l/close", timeout=5.0)
+        rospy.wait_for_service("/yumi/gripper_r/close", timeout=5.0)
 
-        if arm == "left":
-            service_name = "/yumi/gripper_l/close"
-        else:
-            service_name = "/yumi/gripper_r/close"
+        close_left_srv = rospy.ServiceProxy("/yumi/gripper_l/close", Trigger)
+        close_right_srv = rospy.ServiceProxy("/yumi/gripper_r/close", Trigger)
 
-        rospy.wait_for_service(service_name, timeout=5.0)
-        close_srv = rospy.ServiceProxy(service_name, Trigger)
-        resp = close_srv()
+        resp_left = close_left_srv()
+        resp_right = close_right_srv()
 
-        if not resp.success:
-            raise RuntimeError(f"{service_name} failed: {resp.message}")
+        if not resp_left.success:
+            raise RuntimeError(f"/yumi/gripper_l/close failed: {resp_left.message}")
+
+        if not resp_right.success:
+            raise RuntimeError(f"/yumi/gripper_r/close failed: {resp_right.message}")
 
         rospy.sleep(1.0)
 
+        state.grippers_closed = True
+
         return {
             "gripper_closed": True,
-            "arm": arm,
-            "service": service_name,
-            "message": resp.message,
+            "arms": ["left", "right"],
+            "left_service": "/yumi/gripper_l/close",
+            "right_service": "/yumi/gripper_r/close",
+            "left_message": resp_left.message,
+            "right_message": resp_right.message,
         }
