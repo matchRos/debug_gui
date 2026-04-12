@@ -88,8 +88,12 @@ class RobotMotionStep(BaseStep):
             right_pose["position"], right_pose["rotation"]
         )
 
+        stagger_delay_s = 2.50
         # publish both targets
         self.pub_left.publish(left_msg)
+        rospy.sleep(
+            stagger_delay_s
+        )  # staggered start to reduce collision risk during approach
         self.pub_right.publish(right_msg)
 
         state.robot_target_sent = True

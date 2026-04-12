@@ -1,8 +1,10 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import Qt
 
+from cable_routing.debug_gui.backend.cable_trace_io import CableTraceIO
+from cable_routing.debug_gui.backend.tracing_service import TracingService
 from cable_routing.debug_gui.pipeline.runner import StepRunner
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -16,20 +18,16 @@ class GuiController:
         self.state = state
         self.runner = runner
         self.window = None
+        self.trace_io = CableTraceIO()
+        self.tracing_service = TracingService()
 
     def set_window(self, window: Any) -> None:
-        """
-        Attach the main window after construction.
-        """
         self.window = window
         self._populate_step_list()
         self._append_log("GUI controller initialized.")
         self._append_log(f"Current step: {self.runner.get_current_step_name()}")
 
     def _populate_step_list(self) -> None:
-        """
-        Fill the GUI step list from the runner configuration.
-        """
         if self.window is None:
             return
 
@@ -38,18 +36,12 @@ class GuiController:
             self.window.step_list.addItem(step_name)
 
     def _append_log(self, message: str) -> None:
-        """
-        Add a log line to both state and GUI.
-        """
         self.state.log(message)
 
         if self.window is not None:
             self.window.log_box.append(message)
 
     def _update_step_highlight(self) -> None:
-        """
-        Highlight the currently active step in the list widget.
-        """
         if self.window is None:
             return
 
@@ -61,11 +53,6 @@ class GuiController:
                 return
 
     def _numpy_to_pixmap(self, image) -> Optional[QPixmap]:
-        """
-        Convert a numpy RGB image to a QPixmap.
-
-        Expected image format: H x W x 3, dtype uint8.
-        """
         if image is None:
             return None
 
@@ -88,11 +75,6 @@ class GuiController:
         return QPixmap.fromImage(qimage.copy())
 
     def _refresh_image_view(self) -> None:
-        """
-        Show the newest available image in the GUI.
-        Priority:
-        grasp_overlay > trace_overlay > routing_overlay > rgb_image
-        """
         if self.window is None:
             return
 
@@ -120,9 +102,6 @@ class GuiController:
         self.window.image_label.setPixmap(scaled)
 
     def _handle_step_result(self, step_name: str, result: Dict[str, Any]) -> None:
-        """
-        Display step result metadata.
-        """
         self._append_log(f"Finished step: {step_name}")
 
         if result:
@@ -134,9 +113,6 @@ class GuiController:
         self._refresh_image_view()
 
     def on_next_step(self) -> None:
-        """
-        GUI callback: execute the next pipeline step.
-        """
         try:
             step_name, result = self.runner.run_next(self.state)
             self._handle_step_result(step_name, result)
@@ -144,9 +120,6 @@ class GuiController:
             self._append_log(f"ERROR while running next step: {exc}")
 
     def on_run_selected(self) -> None:
-        """
-        GUI callback: execute the currently selected step by name.
-        """
         if self.window is None:
             return
 
@@ -164,9 +137,6 @@ class GuiController:
             self._append_log(f"ERROR while running selected step '{step_name}': {exc}")
 
     def on_reset(self) -> None:
-        """
-        GUI callback: reset runner and shared state.
-        """
         self.runner.reset()
         self.state.reset_runtime_data()
 
@@ -178,3 +148,87 @@ class GuiController:
         self._append_log("Pipeline reset.")
         self._append_log(f"Current step: {self.runner.get_current_step_name()}")
         self._update_step_highlight()
+
+    def on_save_trace(self) -> None:
+        if self.window is None:
+            return
+
+        if self.state.path_in_pixels is None:
+            self._append_log("No cable trace available to save.")
+            return
+
+        try:
+            filepath = self.window.ask_save_trace_path()
+            if not filepath:
+                self._append_log("Save cable trace cancelled.")
+                return
+
+            self.trace_io.save_csv(filepath, self.state.path_in_pixels)
+            self._append_log(f"Saved cable trace to: {filepath}")
+        except Exception as exc:
+            self._append_log(f"ERROR while saving cable trace: {exc}")
+
+    def on_load_trace(self) -> None:
+        if self.window is None:
+            return
+
+        try:
+            filepath = self.window.ask_load_trace_path()
+            if not filepath:
+                self._append_log("Load cable trace cancelled.")
+                return
+
+            self.state.loaded_trace_path = filepath
+            path_in_pixels = self.trace_io.load_csv(filepath)
+
+            if self.state.rgb_image is None:
+                if self.state.env is not None and self.state.env.camera is not None:
+                    image_rgb, _ = self.tracing_service.acquire_image(
+                        camera=self.state.env.camera,
+                        fallback_image_path=None,
+                    )
+                    self.state.rgb_image = image_rgb
+                elif self.state.config is not None:
+                    image_rgb, _ = self.tracing_service.acquire_image(
+                        camera=None,
+                        fallback_image_path=self.state.config.debug_image_path,
+                    )
+                    self.state.rgb_image = image_rgb
+
+            if self.state.rgb_image is None:
+                raise RuntimeError("No image available for trace preview.")
+
+            start_points = []
+            end_points = None
+
+            if self.state.config is not None and hasattr(
+                self.state.config, "trace_start_points"
+            ):
+                start_points = [tuple(p) for p in self.state.config.trace_start_points]
+
+            if self.state.config is not None and hasattr(
+                self.state.config, "trace_end_points"
+            ):
+                pts = self.state.config.trace_end_points
+                if pts is not None:
+                    end_points = [tuple(p) for p in pts]
+
+            overlay = self.tracing_service.create_trace_overlay(
+                image_rgb=self.state.rgb_image,
+                start_points=start_points,
+                end_points=end_points,
+                path_in_pixels=path_in_pixels,
+            )
+
+            self.state.path_in_pixels = path_in_pixels
+            self.state.trace_overlay = overlay
+            self.state.path_in_world = None
+            self.state.cable_orientations = None
+            self.state.grasp_overlay = None
+
+            self._append_log(f"Loaded cable trace from: {filepath}")
+            self._append_log(f"  num_path_points: {len(path_in_pixels)}")
+            self._refresh_image_view()
+
+        except Exception as exc:
+            self._append_log(f"ERROR while loading cable trace: {exc}")

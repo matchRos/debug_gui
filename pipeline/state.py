@@ -32,10 +32,11 @@ class PipelineState:
     path_in_pixels: Optional[np.ndarray] = None
     path_in_world: Optional[np.ndarray] = None
     cable_orientations: Optional[np.ndarray] = None
+    loaded_trace_path: Optional[str] = None
 
     # Grasp preview
     grasp_preview: Optional[Dict[str, Any]] = None
-    
+
     # Robot motion
     robot_target_sent: bool = False
 
@@ -66,6 +67,7 @@ class PipelineState:
         self.path_in_pixels = None
         self.path_in_world = None
         self.cable_orientations = None
+        self.loaded_trace_path = None
 
         self.grasp_preview = None
 

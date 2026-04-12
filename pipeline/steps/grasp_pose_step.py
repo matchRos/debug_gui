@@ -1,4 +1,5 @@
 from typing import Dict
+import numpy as np
 
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
@@ -21,19 +22,29 @@ class GraspPoseStep(BaseStep):
 
         poses = self.service.compute_grasp_poses(state.grasps)
 
-        # assign exactly one pose to each arm (dual-arm)
         if len(poses) != 2:
             raise RuntimeError("Dual-arm grasp requires exactly 2 grasp poses.")
 
-        # keep original grasp order:
-        # poses[0] = grasp near first peg
-        # poses[1] = grasp further back along cable
+        # Assign arms exactly as before
         if poses[0]["position"][1] > poses[1]["position"][1]:
             poses[0]["arm"] = "left"
             poses[1]["arm"] = "right"
         else:
             poses[0]["arm"] = "right"
             poses[1]["arm"] = "left"
+
+        # Rotate LEFT arm tool by 180 deg around its local z-axis
+        Rz_180 = np.array(
+            [
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+
+        for pose in poses:
+            if pose["arm"] == "left":
+                pose["rotation"] = pose["rotation"] @ Rz_180
 
         state.grasp_poses = poses
 
@@ -43,4 +54,6 @@ class GraspPoseStep(BaseStep):
             "poses_available": True,
             "num_poses": len(poses),
             "first_pose_pos": poses[0]["position"].tolist(),
+            "second_pose_pos": poses[1]["position"].tolist(),
+            "arms": [p["arm"] for p in poses],
         }

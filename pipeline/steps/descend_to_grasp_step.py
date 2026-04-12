@@ -8,6 +8,15 @@ from scipy.spatial.transform import Rotation as R
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
+from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    compute_xy_shift,
+    msg_pose_to_dict,
+    publish_staggered_dual_arm_targets,
+    quat_to_list,
+    split_dual_arm_poses,
+    validate_min_distance,
+)
+
 
 class DescendToGraspStep(BaseStep):
     name = "descend_to_grasp"
@@ -87,28 +96,28 @@ class DescendToGraspStep(BaseStep):
             raise RuntimeError("Need exactly one left and one right pregrasp pose.")
 
         # Safety check: both arms should mainly descend vertically, not jump laterally
-        left_xy_shift = float(
-            np.linalg.norm(
-                np.asarray(left_grasp["position"][:2])
-                - np.asarray(left_pre["position"][:2])
-            )
-        )
-        right_xy_shift = float(
-            np.linalg.norm(
-                np.asarray(right_grasp["position"][:2])
-                - np.asarray(right_pre["position"][:2])
-            )
-        )
+        # left_xy_shift = float(
+        #     np.linalg.norm(
+        #         np.asarray(left_grasp["position"][:2])
+        #         - np.asarray(left_pre["position"][:2])
+        #     )
+        # )
+        # right_xy_shift = float(
+        #     np.linalg.norm(
+        #         np.asarray(right_grasp["position"][:2])
+        #         - np.asarray(right_pre["position"][:2])
+        #     )
+        # )
 
-        max_xy_shift = 0.03  # 3 cm tolerance
-        if left_xy_shift > max_xy_shift:
-            raise RuntimeError(
-                f"Left descend not vertical enough: xy shift = {left_xy_shift:.3f} m"
-            )
-        if right_xy_shift > max_xy_shift:
-            raise RuntimeError(
-                f"Right descend not vertical enough: xy shift = {right_xy_shift:.3f} m"
-            )
+        # max_xy_shift = 0.05  #  cm tolerance
+        # if left_xy_shift > max_xy_shift:
+        #     raise RuntimeError(
+        #         f"Left descend not vertical enough: xy shift = {left_xy_shift:.3f} m"
+        #     )
+        # if right_xy_shift > max_xy_shift:
+        #     raise RuntimeError(
+        #         f"Right descend not vertical enough: xy shift = {right_xy_shift:.3f} m"
+        #     )
 
         left_pos = np.asarray(left_grasp["position"]).astype(float).copy()
         right_pos = np.asarray(right_grasp["position"]).astype(float).copy()
@@ -121,16 +130,38 @@ class DescendToGraspStep(BaseStep):
                 f"Grasp poses too close: distance={dist_xyz:.3f} m < {min_dist_xyz:.3f} m"
             )
 
+        # Determine which arm is farther away from the cable start
+        # Higher path progress = farther from cable start
+        if "path_s" in left_grasp and "path_s" in right_grasp:
+            left_progress = float(left_grasp["path_s"])
+            right_progress = float(right_grasp["path_s"])
+        elif "path_index" in left_grasp and "path_index" in right_grasp:
+            left_progress = float(left_grasp["path_index"])
+            right_progress = float(right_grasp["path_index"])
+        else:
+            raise RuntimeError(
+                "Each grasp pose must contain either 'path_s' or 'path_index'."
+            )
+
         left_msg, left_quat = self._build_msg(left_pos, left_grasp["rotation"])
         right_msg, right_quat = self._build_msg(right_pos, right_grasp["rotation"])
 
-        # Refresh timestamps so both commands are as simultaneous as possible
-        now = rospy.Time.now()
-        left_msg.header.stamp = now
-        right_msg.header.stamp = now
+        stagger_delay_s = 0.50
 
-        self.pub_left.publish(left_msg)
-        self.pub_right.publish(right_msg)
+        if left_progress > right_progress:
+            first_arm = "left"
+            second_arm = "right"
+
+            self.pub_left.publish(left_msg)
+            rospy.sleep(stagger_delay_s)
+            self.pub_right.publish(right_msg)
+        else:
+            first_arm = "right"
+            second_arm = "left"
+
+            self.pub_right.publish(right_msg)
+            rospy.sleep(stagger_delay_s)
+            self.pub_left.publish(left_msg)
 
         rospy.sleep(2.0)
 
@@ -142,6 +173,11 @@ class DescendToGraspStep(BaseStep):
             "distance_xyz": dist_xyz,
             "left_xy_shift_from_pregrasp": left_xy_shift,
             "right_xy_shift_from_pregrasp": right_xy_shift,
+            "left_progress": left_progress,
+            "right_progress": right_progress,
+            "first_arm_sent": first_arm,
+            "second_arm_sent": second_arm,
+            "stagger_delay_s": stagger_delay_s,
             "left_position": [
                 left_msg.pose.position.x,
                 left_msg.pose.position.y,

@@ -93,7 +93,7 @@ def build_three_start_points_from_start_and_direction(
     ]
 
 
-def snap_to_bright_pixel(image, pt, radius=15):
+def snap_to_bright_pixel(image, pt, radius=5):
     import cv2
     import numpy as np
 

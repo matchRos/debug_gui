@@ -45,6 +45,10 @@ class GraspPoseService:
 
         for g in grasps:
             pose = self.compute_pose(g["position"], g["tangent"])
+
+            # Preserve cable order information for later staggered descend
+            pose["path_index"] = int(g["index"])
+
             poses.append(pose)
 
         return poses
