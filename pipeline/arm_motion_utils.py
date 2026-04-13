@@ -1,9 +1,10 @@
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
+from sensor_msgs.msg import JointState
 
 
 def split_dual_arm_poses(poses):
@@ -223,3 +224,78 @@ def quat_to_list(quat):
         float(quat[2]),
         float(quat[3]),
     ]
+
+
+def wait_until_robot_settled(
+    topic: str = "/joint_states",
+    timeout_sec: float = 45.0,
+    poll_rate_hz: float = 30.0,
+    still_time_sec: float = 0.35,
+    position_delta_rad: float = 0.004,
+    joint_indices: Optional[List[int]] = None,
+) -> None:
+    """
+    Block until reported joint positions are stable (no significant motion).
+
+    Uses consecutive /joint_states samples: if the max absolute change across
+    selected joints stays below position_delta_rad for still_time_sec, the robot
+    is treated as settled. If joint_indices is None, all joints in the message
+    are considered.
+    """
+    latest: List[Optional[JointState]] = [None]
+    serial = [0]
+
+    def _cb(msg: JointState) -> None:
+        latest[0] = msg
+        serial[0] += 1
+
+    sub = rospy.Subscriber(topic, JointState, _cb, queue_size=1)
+
+    rate = rospy.Rate(poll_rate_hz)
+    deadline = rospy.Time.now().to_sec() + timeout_sec
+
+    prev_pos: Optional[np.ndarray] = None
+    last_serial = -1
+    stable_since: Optional[float] = None
+
+    try:
+        while not rospy.is_shutdown():
+            if rospy.Time.now().to_sec() > deadline:
+                raise RuntimeError(
+                    f"Timeout ({timeout_sec}s) waiting for robot to settle on {topic}."
+                )
+
+            rate.sleep()
+
+            msg = latest[0]
+            if msg is None or not msg.position:
+                continue
+
+            pos_full = np.asarray(msg.position, dtype=float)
+            if joint_indices is not None:
+                pos = pos_full[joint_indices]
+            else:
+                pos = pos_full
+
+            seq = serial[0]
+            if seq == last_serial:
+                continue
+            last_serial = seq
+
+            if prev_pos is None:
+                prev_pos = pos.copy()
+                continue
+
+            delta = float(np.max(np.abs(pos - prev_pos)))
+            prev_pos = pos.copy()
+            now = rospy.Time.now().to_sec()
+
+            if delta < position_delta_rad:
+                if stable_since is None:
+                    stable_since = now
+                elif now - stable_since >= still_time_sec:
+                    return
+            else:
+                stable_since = None
+    finally:
+        sub.unregister()

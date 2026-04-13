@@ -88,7 +88,7 @@ class RobotMotionStep(BaseStep):
             right_pose["position"], right_pose["rotation"]
         )
 
-        stagger_delay_s = 2.50
+        stagger_delay_s = 1.00
         # publish both targets
         self.pub_left.publish(left_msg)
         rospy.sleep(

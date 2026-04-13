@@ -5,6 +5,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
+from cable_routing.debug_gui.pipeline.arm_motion_utils import wait_until_robot_settled
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -95,7 +96,7 @@ class LiftAfterGraspStep(BaseStep):
         self.pub_left.publish(left_msg)
         self.pub_right.publish(right_msg)
 
-        rospy.sleep(2.0)
+        wait_until_robot_settled()
 
         state.lift_after_grasp_done = True
 

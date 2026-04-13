@@ -1,26 +1,17 @@
 from typing import Dict
 
-import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
+from cable_routing.debug_gui.pipeline.arm_motion_utils import wait_until_robot_settled
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
-
-from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    compute_xy_shift,
-    msg_pose_to_dict,
-    publish_staggered_dual_arm_targets,
-    quat_to_list,
-    split_dual_arm_poses,
-    validate_min_distance,
-)
 
 
 class DescendToGraspStep(BaseStep):
     name = "descend_to_grasp"
-    description = "Move both arms from pre-grasp to grasp pose simultaneously."
+    description = "Descend first with the arm farther away from the cable start."
 
     def __init__(self):
         super().__init__()
@@ -40,7 +31,7 @@ class DescendToGraspStep(BaseStep):
         )
 
     def _build_msg(self, pos, rot):
-        quat = R.from_matrix(rot).as_quat()  # x, y, z, w
+        quat = R.from_matrix(rot).as_quat()
 
         msg = PoseStamped()
         msg.header.stamp = rospy.Time.now()
@@ -57,10 +48,24 @@ class DescendToGraspStep(BaseStep):
 
         return msg, quat
 
+    def _split_by_arm(self, poses):
+        left_pose = None
+        right_pose = None
+
+        for pose in poses:
+            if pose.get("arm") == "left":
+                left_pose = pose
+            elif pose.get("arm") == "right":
+                right_pose = pose
+
+        if left_pose is None or right_pose is None:
+            raise RuntimeError("Need exactly one left pose and one right pose.")
+
+        return left_pose, right_pose
+
     def run(self, state: PipelineState) -> Dict[str, object]:
         if not hasattr(state, "grasp_poses"):
             raise RuntimeError("No grasp poses available.")
-
         if not hasattr(state, "pregrasp_poses"):
             raise RuntimeError("No pregrasp poses available.")
 
@@ -69,135 +74,63 @@ class DescendToGraspStep(BaseStep):
 
         if len(grasp_poses) != 2 or len(pregrasp_poses) != 2:
             raise RuntimeError(
-                "Dual-arm descend requires exactly 2 grasp and 2 pregrasp poses."
+                "Sequential descend requires exactly 2 grasp and 2 pregrasp poses."
             )
 
-        left_grasp = None
-        right_grasp = None
-        left_pre = None
-        right_pre = None
+        left_grasp, right_grasp = self._split_by_arm(grasp_poses)
+        _, _ = self._split_by_arm(pregrasp_poses)
 
-        for pose in grasp_poses:
-            if pose.get("arm") == "left":
-                left_grasp = pose
-            elif pose.get("arm") == "right":
-                right_grasp = pose
+        if "path_index" not in left_grasp or "path_index" not in right_grasp:
+            raise RuntimeError("Both grasp poses need 'path_index'.")
 
-        for pose in pregrasp_poses:
-            if pose.get("arm") == "left":
-                left_pre = pose
-            elif pose.get("arm") == "right":
-                right_pre = pose
+        left_progress = float(left_grasp["path_index"])
+        right_progress = float(right_grasp["path_index"])
 
-        if left_grasp is None or right_grasp is None:
-            raise RuntimeError("Need exactly one left and one right grasp pose.")
-
-        if left_pre is None or right_pre is None:
-            raise RuntimeError("Need exactly one left and one right pregrasp pose.")
-
-        # Safety check: both arms should mainly descend vertically, not jump laterally
-        # left_xy_shift = float(
-        #     np.linalg.norm(
-        #         np.asarray(left_grasp["position"][:2])
-        #         - np.asarray(left_pre["position"][:2])
-        #     )
-        # )
-        # right_xy_shift = float(
-        #     np.linalg.norm(
-        #         np.asarray(right_grasp["position"][:2])
-        #         - np.asarray(right_pre["position"][:2])
-        #     )
-        # )
-
-        # max_xy_shift = 0.05  #  cm tolerance
-        # if left_xy_shift > max_xy_shift:
-        #     raise RuntimeError(
-        #         f"Left descend not vertical enough: xy shift = {left_xy_shift:.3f} m"
-        #     )
-        # if right_xy_shift > max_xy_shift:
-        #     raise RuntimeError(
-        #         f"Right descend not vertical enough: xy shift = {right_xy_shift:.3f} m"
-        #     )
-
-        left_pos = np.asarray(left_grasp["position"]).astype(float).copy()
-        right_pos = np.asarray(right_grasp["position"]).astype(float).copy()
-
-        # Collision safety check
-        min_dist_xyz = 0.1  # 8 cm
-        dist_xyz = float(np.linalg.norm(left_pos - right_pos))
-        if dist_xyz < min_dist_xyz:
-            raise RuntimeError(
-                f"Grasp poses too close: distance={dist_xyz:.3f} m < {min_dist_xyz:.3f} m"
-            )
-
-        # Determine which arm is farther away from the cable start
-        # Higher path progress = farther from cable start
-        if "path_s" in left_grasp and "path_s" in right_grasp:
-            left_progress = float(left_grasp["path_s"])
-            right_progress = float(right_grasp["path_s"])
-        elif "path_index" in left_grasp and "path_index" in right_grasp:
-            left_progress = float(left_grasp["path_index"])
-            right_progress = float(right_grasp["path_index"])
-        else:
-            raise RuntimeError(
-                "Each grasp pose must contain either 'path_s' or 'path_index'."
-            )
-
-        left_msg, left_quat = self._build_msg(left_pos, left_grasp["rotation"])
-        right_msg, right_quat = self._build_msg(right_pos, right_grasp["rotation"])
-
-        stagger_delay_s = 0.50
-
+        # Larger path index = farther from cable start -> descend first
         if left_progress > right_progress:
             first_arm = "left"
+            first_pose = left_grasp
             second_arm = "right"
-
-            self.pub_left.publish(left_msg)
-            rospy.sleep(stagger_delay_s)
-            self.pub_right.publish(right_msg)
+            second_pose = right_grasp
         else:
             first_arm = "right"
+            first_pose = right_grasp
             second_arm = "left"
+            second_pose = left_grasp
 
-            self.pub_right.publish(right_msg)
-            rospy.sleep(stagger_delay_s)
-            self.pub_left.publish(left_msg)
+        first_msg, first_quat = self._build_msg(
+            first_pose["position"], first_pose["rotation"]
+        )
 
-        rospy.sleep(2.0)
+        if first_arm == "left":
+            self.pub_left.publish(first_msg)
+        else:
+            self.pub_right.publish(first_msg)
 
+        wait_until_robot_settled()
+
+        state.descend_first_arm = first_arm
+        state.descend_second_arm = second_arm
+        state.first_grasp_pose = first_pose
+        state.second_grasp_pose = second_pose
         state.descend_target_sent = True
 
         return {
             "descend_sent": True,
-            "arms": ["left", "right"],
-            "distance_xyz": dist_xyz,
-            "left_xy_shift_from_pregrasp": left_xy_shift,
-            "right_xy_shift_from_pregrasp": right_xy_shift,
+            "mode": "sequential",
+            "first_arm_sent": first_arm,
+            "second_arm_pending": second_arm,
             "left_progress": left_progress,
             "right_progress": right_progress,
-            "first_arm_sent": first_arm,
-            "second_arm_sent": second_arm,
-            "stagger_delay_s": stagger_delay_s,
-            "left_position": [
-                left_msg.pose.position.x,
-                left_msg.pose.position.y,
-                left_msg.pose.position.z,
+            "first_position": [
+                first_msg.pose.position.x,
+                first_msg.pose.position.y,
+                first_msg.pose.position.z,
             ],
-            "right_position": [
-                right_msg.pose.position.x,
-                right_msg.pose.position.y,
-                right_msg.pose.position.z,
-            ],
-            "left_quaternion": [
-                float(left_quat[0]),
-                float(left_quat[1]),
-                float(left_quat[2]),
-                float(left_quat[3]),
-            ],
-            "right_quaternion": [
-                float(right_quat[0]),
-                float(right_quat[1]),
-                float(right_quat[2]),
-                float(right_quat[3]),
+            "first_quaternion": [
+                float(first_quat[0]),
+                float(first_quat[1]),
+                float(first_quat[2]),
+                float(first_quat[3]),
             ],
         }
