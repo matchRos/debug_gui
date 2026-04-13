@@ -92,3 +92,14 @@ class StepRunner:
                 return step.name, result
 
         raise ValueError(f"Unknown step name: {step_name}")
+
+    def set_pointer_to_step_name(self, step_name: str) -> None:
+        """
+        Move the sequential 'Next step' pointer to the given step without running
+        any steps. Use for faster debugging when intermediate steps are not needed.
+        """
+        for idx, step in enumerate(self.steps):
+            if step.name == step_name:
+                self.current_idx = idx
+                return
+        raise ValueError(f"Unknown step name: {step_name}")

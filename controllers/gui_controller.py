@@ -79,8 +79,12 @@ class GuiController:
             return
 
         image = None
+        # first_route_overlay: camera image + first-route preview (see plan_first_route).
+        # It must rank above trace_overlay, which would otherwise hide the plan view.
         if self.state.grasp_overlay is not None:
             image = self.state.grasp_overlay
+        elif self.state.first_route_overlay is not None:
+            image = self.state.first_route_overlay
         elif self.state.trace_overlay is not None:
             image = self.state.trace_overlay
         elif self.state.routing_overlay is not None:
@@ -118,6 +122,33 @@ class GuiController:
             self._handle_step_result(step_name, result)
         except Exception as exc:
             self._append_log(f"ERROR while running next step: {exc}")
+
+    def on_jump_pointer_to_selected(self) -> None:
+        """
+        Move only the sequential step pointer to the selected step without running it.
+        Prior steps are not executed — pipeline state may be incomplete unless you
+        loaded a trace / ran earlier steps manually.
+        """
+        if self.window is None:
+            return
+
+        current_item = self.window.step_list.currentItem()
+        if current_item is None:
+            self._append_log("No step selected.")
+            return
+
+        step_name = current_item.text()
+        try:
+            self.runner.set_pointer_to_step_name(step_name)
+        except ValueError as exc:
+            self._append_log(f"ERROR: {exc}")
+            return
+
+        self._append_log(
+            f"Pointer moved to '{step_name}' (no steps executed). "
+            f"Use 'Next step' to run from here, or ensure state is ready before running."
+        )
+        self._update_step_highlight()
 
     def on_run_selected(self) -> None:
         if self.window is None:

@@ -5,6 +5,7 @@ import numpy as np
 
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
+from cable_routing.debug_gui.backend.visualization_service import VisualizationService
 from cable_routing.env.robots.misc import calculate_sequence
 
 
@@ -16,6 +17,7 @@ class PlanFirstRouteStep(BaseStep):
 
     def __init__(self):
         super().__init__()
+        self._viz = VisualizationService()
 
     def _clip_px(self, clip):
         return np.array([float(clip.x), float(clip.y)], dtype=float)
@@ -46,14 +48,16 @@ class PlanFirstRouteStep(BaseStep):
 
         T_cam_base = env.T_CAM_BASE[arm]
 
-        p_base = np.asarray(world_point, dtype=float).reshape(3)
-        p_cam = T_cam_base.inverse().apply(p_base)
-
-        if p_cam[2] <= 1e-6:
-            raise RuntimeError(f"Projected point is behind camera for arm '{arm}'.")
-
-        uv = env.camera.intrinsic.project(p_cam.reshape(3, 1))
-        uv = np.asarray(uv).reshape(-1)
+        # Use the same math as VisualizationService (avoids autolab Point / apply shape rules).
+        uv = self._viz.project_world_to_pixel(
+            world_point,
+            env.camera.intrinsic,
+            T_cam_base,
+        )
+        if uv is None:
+            raise RuntimeError(
+                f"Grasp point projects behind camera or invalid for arm '{arm}'."
+            )
 
         return np.array([float(uv[0]), float(uv[1])], dtype=float)
 
@@ -104,12 +108,13 @@ class PlanFirstRouteStep(BaseStep):
     ):
         overlay = image.copy()
 
-        for clip_id, clip in clips.items():
+        # state.clips is a List[DebugClip] (indices in routing refer to this list).
+        for clip in clips:
             p = self._clip_px(clip).astype(int)
             cv2.circle(overlay, tuple(p), 6, (180, 180, 180), -1)
             cv2.putText(
                 overlay,
-                str(clip_id),
+                str(clip.clip_id),
                 (int(p[0]) + 8, int(p[1]) - 8),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
@@ -182,7 +187,7 @@ class PlanFirstRouteStep(BaseStep):
 
     def run(self, state: PipelineState) -> Dict[str, object]:
         if state.routing is None or len(state.routing) < 3:
-            raise RuntimeError("Routing must contain at least 3 clip IDs.")
+            raise RuntimeError("Routing must contain at least 3 clip indices.")
 
         if state.clips is None:
             raise RuntimeError("Clip data not available.")
@@ -251,6 +256,7 @@ class PlanFirstRouteStep(BaseStep):
         )
 
         state.routing_overlay = overlay
+        state.first_route_overlay = overlay
         state.grasp_overlay = None
 
         return {

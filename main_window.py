@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
 
         self.next_button = QPushButton("Next Step")
         self.run_selected_button = QPushButton("Run Selected")
+        self.jump_pointer_button = QPushButton("Pointer → selected (no run)")
         self.reset_button = QPushButton("Reset")
 
         self.save_trace_button = QPushButton("Save Cable Trace")
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.image_label, stretch=1)
         right_layout.addWidget(self.next_button)
         right_layout.addWidget(self.run_selected_button)
+        right_layout.addWidget(self.jump_pointer_button)
         right_layout.addWidget(self.save_trace_button)
         right_layout.addWidget(self.load_trace_button)
         right_layout.addWidget(self.reset_button)
@@ -74,6 +76,9 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.next_button.clicked.connect(self.controller.on_next_step)
         self.run_selected_button.clicked.connect(self.controller.on_run_selected)
+        self.jump_pointer_button.clicked.connect(
+            self.controller.on_jump_pointer_to_selected
+        )
         self.reset_button.clicked.connect(self.controller.on_reset)
         self.save_trace_button.clicked.connect(self.controller.on_save_trace)
         self.load_trace_button.clicked.connect(self.controller.on_load_trace)
