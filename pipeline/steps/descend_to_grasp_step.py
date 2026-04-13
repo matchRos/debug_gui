@@ -123,7 +123,7 @@ class DescendToGraspStep(BaseStep):
         right_pos = np.asarray(right_grasp["position"]).astype(float).copy()
 
         # Collision safety check
-        min_dist_xyz = 0.08  # 8 cm
+        min_dist_xyz = 0.1  # 8 cm
         dist_xyz = float(np.linalg.norm(left_pos - right_pos))
         if dist_xyz < min_dist_xyz:
             raise RuntimeError(

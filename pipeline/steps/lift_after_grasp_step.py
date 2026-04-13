@@ -69,7 +69,7 @@ class LiftAfterGraspStep(BaseStep):
         if left_pose is None or right_pose is None:
             raise RuntimeError("Need exactly one left and one right grasp pose.")
 
-        lift_distance = 0.05  # 5 cm
+        lift_distance = 0.02  # 2 cm
 
         left_pos = np.asarray(left_pose["position"]).astype(float).copy()
         right_pos = np.asarray(right_pose["position"]).astype(float).copy()

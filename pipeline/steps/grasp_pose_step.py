@@ -33,19 +33,20 @@ class GraspPoseStep(BaseStep):
             poses[0]["arm"] = "right"
             poses[1]["arm"] = "left"
 
-        # Rotate LEFT arm tool by 180 deg around its local z-axis
-        Rz_180 = np.array(
+        # Rotate LEFT arm tool by +90 deg around its local z-axis
+        theta = np.deg2rad(180.0)
+
+        Rz_bias = np.array(
             [
-                [-1.0, 0.0, 0.0],
-                [0.0, -1.0, 0.0],
+                [np.cos(theta), -np.sin(theta), 0.0],
+                [np.sin(theta), np.cos(theta), 0.0],
                 [0.0, 0.0, 1.0],
             ]
         )
 
         for pose in poses:
             if pose["arm"] == "left":
-                pose["rotation"] = pose["rotation"] @ Rz_180
-
+                pose["rotation"] = pose["rotation"] @ Rz_bias
         state.grasp_poses = poses
 
         print("Assigned arms:", [p["arm"] for p in poses])

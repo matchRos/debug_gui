@@ -25,6 +25,9 @@ class PreGraspPoseService:
                 pre_pos[1] -= 0.04  # 3 cm to the right
             elif pose.get("arm") == "left":
                 pre_pos[1] += 0.04  # 3 cm to the left
+                pre_pos[
+                    0
+                ] -= 0.02  # TODO: remove this - this is wrong but currently needed to account for calibration errors and ensure collision-free staggered descend
 
             pre_pose = {
                 "position": pre_pos,

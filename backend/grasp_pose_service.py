@@ -32,7 +32,12 @@ class GraspPoseService:
 
         # enforce table height
         position = np.asarray(position).astype(float)
-        position[2] = 0.07  # table (0.05) + 2 cm safety
+        position[2] = 0.175  # table (0.05) + 5 cm safety
+
+        # TODO: fix calibration errors
+        position[
+            0
+        ] += 0.01  # small forward offset to account calibration errors and ensure firm grasp
 
         return {
             "position": position,

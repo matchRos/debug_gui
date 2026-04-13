@@ -38,6 +38,7 @@ from cable_routing.debug_gui.pipeline.steps.close_gripper_step import CloseGripp
 from cable_routing.debug_gui.pipeline.steps.lift_after_grasp_step import (
     LiftAfterGraspStep,
 )
+from cable_routing.debug_gui.pipeline.unwind_wrists_step import UnwindWristsStep
 
 
 def build_runner() -> StepRunner:
@@ -53,6 +54,7 @@ def build_runner() -> StepRunner:
         VisualizeGraspsStep(),
         PreGraspPoseStep(),
         RobotMotionStep(),
+        UnwindWristsStep(),
         DescendToGraspStep(),
         CloseGripperStep(),
         LiftAfterGraspStep(),
