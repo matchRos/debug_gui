@@ -29,6 +29,8 @@ class PipelineState:
     grasp_overlay: Optional[np.ndarray] = None
     # Camera-based first-route preview (plan_first_route); shown above trace_overlay.
     first_route_overlay: Optional[np.ndarray] = None
+    # Set by execute_first_route after a successful motion.
+    first_route_executed: bool = False
 
     # Perception results
     path_in_pixels: Optional[np.ndarray] = None
@@ -66,6 +68,7 @@ class PipelineState:
         self.trace_overlay = None
         self.grasp_overlay = None
         self.first_route_overlay = None
+        self.first_route_executed = False
 
         self.path_in_pixels = None
         self.path_in_world = None

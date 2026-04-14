@@ -50,6 +50,9 @@ from cable_routing.debug_gui.pipeline.steps.close_second_gripper_step import (
 from cable_routing.debug_gui.pipeline.steps.plan_first_route_step import (
     PlanFirstRouteStep,
 )
+from cable_routing.debug_gui.pipeline.steps.execute_first_route_step import (
+    ExecuteFirstRouteStep,
+)
 
 
 def build_runner() -> StepRunner:
@@ -64,14 +67,15 @@ def build_runner() -> StepRunner:
         GraspPoseStep(),
         VisualizeGraspsStep(),
         PreGraspPoseStep(),
-        #RobotMotionStep(),
-        #UnwindWristsStep(),
-        #DescendToGraspStep(),
-        #CloseFirstGripperStep(),
-        #DescendSecondToGraspStep(),
-        #CloseSecondGripperStep(),
-        #LiftAfterGraspStep(),
+        RobotMotionStep(),
+        UnwindWristsStep(),
+        DescendToGraspStep(),
+        CloseFirstGripperStep(),
+        DescendSecondToGraspStep(),
+        CloseSecondGripperStep(),
+        LiftAfterGraspStep(),
         PlanFirstRouteStep(),
+        ExecuteFirstRouteStep(),
     ]
     return StepRunner(steps)
 

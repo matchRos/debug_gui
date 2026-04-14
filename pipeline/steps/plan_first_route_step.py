@@ -6,10 +6,8 @@ import numpy as np
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.visualization_service import VisualizationService
+from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_PEG
 from cable_routing.env.robots.misc import calculate_sequence
-
-# Matches debug board / board_setup_gui_with_U_Clip: type 1 = Peg.
-CLIP_TYPE_PEG = 1
 
 
 class PlanFirstRouteStep(BaseStep):
