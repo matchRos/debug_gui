@@ -123,11 +123,10 @@ class GuiController:
         except Exception as exc:
             self._append_log(f"ERROR while running next step: {exc}")
 
-    def on_jump_pointer_to_selected(self) -> None:
+    def on_auto_run_to_selected(self) -> None:
         """
-        Move only the sequential step pointer to the selected step without running it.
-        Prior steps are not executed — pipeline state may be incomplete unless you
-        loaded a trace / ran earlier steps manually.
+        Automatically run all sequential pipeline steps up to and including the
+        selected step.
         """
         if self.window is None:
             return
@@ -138,17 +137,31 @@ class GuiController:
             return
 
         step_name = current_item.text()
-        try:
-            self.runner.set_pointer_to_step_name(step_name)
-        except ValueError as exc:
-            self._append_log(f"ERROR: {exc}")
+        step_names = self.runner.get_step_names()
+        if step_name not in step_names:
+            self._append_log(f"ERROR: Unknown step '{step_name}'.")
             return
 
-        self._append_log(
-            f"Pointer moved to '{step_name}' (no steps executed). "
-            f"Use 'Next step' to run from here, or ensure state is ready before running."
-        )
-        self._update_step_highlight()
+        target_idx = step_names.index(step_name)
+
+        # If selected step is behind current pointer, restart from clean state.
+        if target_idx < self.runner.current_idx:
+            self._append_log(
+                f"Selected step '{step_name}' is behind current pointer. Resetting pipeline first."
+            )
+            self.runner.reset()
+            self.state.reset_runtime_data()
+
+        self._append_log(f"Auto-running steps up to '{step_name}'...")
+        while self.runner.has_next() and self.runner.current_idx <= target_idx:
+            try:
+                executed_name, result = self.runner.run_next(self.state)
+                self._handle_step_result(executed_name, result)
+            except Exception as exc:
+                self._append_log(
+                    f"ERROR during auto-run at step '{self.runner.get_current_step_name()}': {exc}"
+                )
+                return
 
     def on_run_selected(self) -> None:
         if self.window is None:

@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -35,11 +36,14 @@ class MainWindow(QMainWindow):
 
         self.next_button = QPushButton("Next Step")
         self.run_selected_button = QPushButton("Run Selected")
-        self.jump_pointer_button = QPushButton("Pointer → selected (no run)")
+        self.jump_pointer_button = QPushButton("Auto-run to selected")
         self.reset_button = QPushButton("Reset")
 
         self.save_trace_button = QPushButton("Save Cable Trace")
         self.load_trace_button = QPushButton("Load Cable Trace")
+        self.trace_mode_combo = QComboBox()
+        self.trace_mode_combo.addItem("Auto from config", "auto_from_config")
+        self.trace_mode_combo.addItem("Manual two clicks", "manual_two_clicks")
 
         self._build_layout()
         self._connect_signals()
@@ -65,6 +69,8 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.next_button)
         right_layout.addWidget(self.run_selected_button)
         right_layout.addWidget(self.jump_pointer_button)
+        right_layout.addWidget(QLabel("Trace Start Mode"))
+        right_layout.addWidget(self.trace_mode_combo)
         right_layout.addWidget(self.save_trace_button)
         right_layout.addWidget(self.load_trace_button)
         right_layout.addWidget(self.reset_button)
@@ -77,11 +83,14 @@ class MainWindow(QMainWindow):
         self.next_button.clicked.connect(self.controller.on_next_step)
         self.run_selected_button.clicked.connect(self.controller.on_run_selected)
         self.jump_pointer_button.clicked.connect(
-            self.controller.on_jump_pointer_to_selected
+            self.controller.on_auto_run_to_selected
         )
         self.reset_button.clicked.connect(self.controller.on_reset)
         self.save_trace_button.clicked.connect(self.controller.on_save_trace)
         self.load_trace_button.clicked.connect(self.controller.on_load_trace)
+        self.trace_mode_combo.currentIndexChanged.connect(
+            self.controller.on_trace_start_mode_changed
+        )
 
     def ask_save_trace_path(self) -> str:
         path, _ = QFileDialog.getSaveFileName(

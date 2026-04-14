@@ -194,6 +194,7 @@ class TracingService:
         start_points: List[Tuple[int, int]],
         end_points: Optional[List[Tuple[int, int]]] = None,
         viz: bool = False,
+        start_mode: str = "auto_from_config",
     ) -> Dict[str, Any]:
         """
         Execute the legacy CableTracer wrapper if available.
@@ -208,17 +209,20 @@ class TracingService:
         #     viz=viz,
         # )
 
-        picked_xy = pick_two_points_on_image(image_rgb)
-        print("clicked points (x,y):", picked_xy)
+        if start_mode == "manual_two_clicks":
+            picked_xy = pick_two_points_on_image(image_rgb)
+            print("clicked points (x,y):", picked_xy)
 
-        start_points = build_three_start_points_from_start_and_direction(
-            image_rgb,
-            picked_xy[0],  # first click = start
-            picked_xy[1],  # second click = direction
-            step_px=20,
-        )
-
-        print("generated tracer start points (y,x):", start_points)
+            start_points = build_three_start_points_from_start_and_direction(
+                image_rgb,
+                picked_xy[0],  # first click = start
+                picked_xy[1],  # second click = direction
+                step_px=20,
+            )
+            print("generated tracer start points (y,x):", start_points)
+        else:
+            # auto_from_config (default): trust pipeline-configured start points
+            print("using configured tracer start points:", start_points)
 
         try:
             result = tracer.trace(

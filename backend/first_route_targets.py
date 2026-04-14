@@ -11,10 +11,14 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_PEG
+from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_C_CLIP, CLIP_TYPE_PEG
 from cable_routing.debug_gui.backend.planes import (
     ensure_min_plane_height,
     get_routing_plane,
+)
+from cable_routing.debug_gui.motion_primitives.c_clip import (
+    build_c_clip_center_pixels,
+    build_c_clip_entry_pixels,
 )
 from cable_routing.debug_gui.pipeline.arm_motion_utils import validate_min_distance
 from cable_routing.env.ext_camera.utils.img_utils import get_world_coord_from_pixel_coord
@@ -47,6 +51,33 @@ def _pixel_to_world_clip(
         arm=arm,
     )
     return np.asarray(w, dtype=float).reshape(3)
+
+
+def _move_pixel_along_route(primary_px: np.ndarray, state: Any) -> np.ndarray:
+    """
+    Shift the primary arm target in pixel space along curr->next route direction.
+    This helps keep the primary arm farther from the current clip before execution.
+    """
+    extra_px = float(getattr(state.config, "first_route_primary_extra_along_route_px", 0.0))
+    if extra_px <= 1e-6:
+        return primary_px
+
+    curr_idx = getattr(state, "first_route_curr_clip_id", None)
+    next_idx = getattr(state, "first_route_next_clip_id", None)
+    if state.clips is None or curr_idx is None or next_idx is None:
+        return primary_px
+
+    curr_clip = state.clips[curr_idx]
+    next_clip = state.clips[next_idx]
+    p_curr = np.array([float(curr_clip.x), float(curr_clip.y)], dtype=float)
+    p_next = np.array([float(next_clip.x), float(next_clip.y)], dtype=float)
+    direction = p_next - p_curr
+    norm = float(np.linalg.norm(direction))
+    if norm < 1e-6:
+        return primary_px
+
+    direction = direction / norm
+    return primary_px + direction * extra_px
 
 
 def build_first_route_execution_poses(
@@ -86,6 +117,7 @@ def build_first_route_execution_poses(
     routing_height = float(state.config.routing_height_above_plane_m)
 
     primary_px = np.asarray(state.first_route_target_px, dtype=float).reshape(2)
+    primary_px = _move_pixel_along_route(primary_px, state)
     primary_pos = _pixel_to_world_clip(primary_px, state, primary_arm)
     primary_pos = ensure_min_plane_height(primary_pos, plane, routing_height)
     primary_rot = _pose_for_arm(state.grasp_poses, primary_arm)["rotation"]
@@ -107,6 +139,33 @@ def build_first_route_execution_poses(
             left, right = secondary_hold, primary_pose
         validate_min_distance(left, right, min_dist_xyz, label="First route (peg)")
         return left, right, "peg_hold"
+
+    if clip_type == CLIP_TYPE_C_CLIP:
+        primary_px_c, secondary_px_c = build_c_clip_entry_pixels(
+            curr_clip=curr_clip,
+            primary_arm=primary_arm,
+            config=state.config,
+        )
+        primary_pos_c = _pixel_to_world_clip(primary_px_c, state, primary_arm)
+        primary_pos_c = ensure_min_plane_height(primary_pos_c, plane, routing_height)
+        secondary_pos_c = _pixel_to_world_clip(secondary_px_c, state, secondary_arm)
+        secondary_pos_c = ensure_min_plane_height(secondary_pos_c, plane, routing_height)
+
+        primary_c_pose = {
+            "position": primary_pos_c,
+            "rotation": np.asarray(primary_rot),
+        }
+        secondary_c_pose = {
+            "position": secondary_pos_c,
+            "rotation": np.asarray(secondary_pose["rotation"]),
+        }
+
+        if primary_arm == "left":
+            left, right = primary_c_pose, secondary_c_pose
+        else:
+            left, right = secondary_c_pose, primary_c_pose
+        validate_min_distance(left, right, min_dist_xyz, label="First route (c_clip)")
+        return left, right, "c_clip_entry"
 
     if not getattr(state, "first_route_secondary_shown", False):
         raise RuntimeError(
@@ -130,3 +189,58 @@ def build_first_route_execution_poses(
 
     validate_min_distance(left, right, min_dist_xyz, label="First route (dual)")
     return left, right, "dual_slide"
+
+
+def build_c_clip_centering_poses(
+    state: Any,
+    min_dist_xyz: float = 0.08,
+) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+    """
+    Second phase for C-clip: move from entry-side toward clip center lane.
+    """
+    if state.env is None or state.env.camera is None:
+        raise RuntimeError("Environment / camera not available.")
+    if not hasattr(state.env, "T_CAM_BASE"):
+        raise RuntimeError("T_CAM_BASE not available.")
+    if state.rgb_image is None:
+        raise RuntimeError("No rgb_image in state.")
+    if not hasattr(state, "grasp_poses"):
+        raise RuntimeError("No grasp_poses in state.")
+
+    primary_arm = getattr(state, "current_primary_arm", None) or "left"
+    secondary_arm = "right" if primary_arm == "left" else "left"
+
+    curr_idx = getattr(state, "first_route_curr_clip_id", None)
+    if curr_idx is None or state.clips is None:
+        raise RuntimeError("Missing first_route_curr_clip_id or clips.")
+    curr_clip = state.clips[curr_idx]
+    if int(curr_clip.clip_type) != CLIP_TYPE_C_CLIP:
+        raise RuntimeError("Centering phase is only valid for C-clip.")
+
+    plane = get_routing_plane(state.config, clip_id=curr_idx)
+    routing_height = float(state.config.routing_height_above_plane_m)
+
+    primary_px, secondary_px = build_c_clip_center_pixels(
+        curr_clip=curr_clip,
+        primary_arm=primary_arm,
+        config=state.config,
+    )
+
+    primary_pos = _pixel_to_world_clip(primary_px, state, primary_arm)
+    primary_pos = ensure_min_plane_height(primary_pos, plane, routing_height)
+    secondary_pos = _pixel_to_world_clip(secondary_px, state, secondary_arm)
+    secondary_pos = ensure_min_plane_height(secondary_pos, plane, routing_height)
+
+    primary_rot = _pose_for_arm(state.grasp_poses, primary_arm)["rotation"]
+    secondary_rot = _pose_for_arm(state.grasp_poses, secondary_arm)["rotation"]
+
+    primary_pose = {"position": primary_pos, "rotation": np.asarray(primary_rot)}
+    secondary_pose = {"position": secondary_pos, "rotation": np.asarray(secondary_rot)}
+
+    if primary_arm == "left":
+        left, right = primary_pose, secondary_pose
+    else:
+        left, right = secondary_pose, primary_pose
+
+    validate_min_distance(left, right, min_dist_xyz, label="C-clip centering")
+    return left, right, "c_clip_center"

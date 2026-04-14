@@ -75,6 +75,7 @@ class TraceCableStep(BaseStep):
             start_points=start_points,
             end_points=end_points,
             viz=False,
+            start_mode=getattr(state.config, "trace_start_mode", "auto_from_config"),
         )
 
         path_in_pixels = trace_result["path_in_pixels"]

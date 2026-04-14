@@ -6,6 +6,7 @@ from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.backend.first_route_targets import (
+    build_c_clip_centering_poses,
     build_first_route_execution_poses,
 )
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
@@ -71,11 +72,36 @@ class ExecuteFirstRouteStep(BaseStep):
 
         wait_until_robot_settled()
 
+        second_phase_executed = False
+        second_phase_mode = None
+        if mode == "c_clip_entry":
+            left_center, right_center, second_phase_mode = build_c_clip_centering_poses(
+                state
+            )
+            left_center = enforce_pose_min_height(left_center, state, routing_floor)
+            right_center = enforce_pose_min_height(right_center, state, routing_floor)
+
+            left_center_msg = self._build_msg(
+                left_center["position"], left_center["rotation"]
+            )
+            right_center_msg = self._build_msg(
+                right_center["position"], right_center["rotation"]
+            )
+            now2 = rospy.Time.now()
+            left_center_msg.header.stamp = now2
+            right_center_msg.header.stamp = now2
+            self.pub_left.publish(left_center_msg)
+            self.pub_right.publish(right_center_msg)
+            wait_until_robot_settled()
+            second_phase_executed = True
+
         state.first_route_executed = True
 
         return {
             "executed": True,
             "mode": mode,
+            "second_phase_executed": second_phase_executed,
+            "second_phase_mode": second_phase_mode,
             "left_position": [
                 left_msg.pose.position.x,
                 left_msg.pose.position.y,
