@@ -1,33 +1,40 @@
 import numpy as np
 
+from cable_routing.debug_gui.backend.planes import ensure_min_plane_height
+
 
 class PreGraspPoseService:
-    def compute_pregrasp_poses(self, grasp_poses, offset=0.08):
+    def compute_pregrasp_poses(
+        self,
+        grasp_poses,
+        plane,
+        pregrasp_offset_from_grasp_m: float = 0.08,
+        routing_height_above_plane_m: float = 0.025,
+    ):
         pregrasp_poses = []
+        normal_axis = np.asarray(plane.normal, dtype=float).reshape(3)
+        lateral_axis = np.asarray(plane.v_axis, dtype=float).reshape(3)
+        forward_axis = np.asarray(plane.u_axis, dtype=float).reshape(3)
 
         for pose in grasp_poses:
             pos = np.asarray(pose["position"]).astype(float)
             R = np.asarray(pose["rotation"]).astype(float)
 
-            print("grasp pose position:", pose["position"])
+            # Move out of the routing plane along its normal.
+            pre_pos = pos.copy() + normal_axis * float(pregrasp_offset_from_grasp_m)
 
-            # approach_axis = np.asarray(pose["approach_axis"]).astype(float)
-            # approach_axis = approach_axis / (np.linalg.norm(approach_axis) + 1e-8)
-            # pre_pos = pos - approach_axis * offset
-
-            # for now just move straight up, assuming grasp approach is mostly vertical
-            pre_pos = pos.copy()
-            pre_pos[2] += offset
-
-            # for the right arm move slightly more to the right, for the left arm slightly more to the left,
-            # to reduce collision risk during staggered descend
+            # Keep the existing anti-collision offsets, but in plane coordinates.
             if pose.get("arm") == "right":
-                pre_pos[1] -= 0.04  # 3 cm to the right
+                pre_pos = pre_pos - lateral_axis * 0.04
             elif pose.get("arm") == "left":
-                pre_pos[1] += 0.04  # 3 cm to the left
-                pre_pos[
-                    0
-                ] -= 0.02  # TODO: remove this - this is wrong but currently needed to account for calibration errors and ensure collision-free staggered descend
+                pre_pos = pre_pos + lateral_axis * 0.04
+                pre_pos = pre_pos - forward_axis * 0.02
+
+            pre_pos = ensure_min_plane_height(
+                pre_pos,
+                plane,
+                routing_height_above_plane_m,
+            )
 
             pre_pose = {
                 "position": pre_pos,

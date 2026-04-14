@@ -8,7 +8,10 @@ from scipy.spatial.transform import Rotation as R
 from cable_routing.debug_gui.backend.first_route_targets import (
     build_first_route_execution_poses,
 )
-from cable_routing.debug_gui.pipeline.arm_motion_utils import wait_until_robot_settled
+from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    enforce_pose_min_height,
+    wait_until_robot_settled,
+)
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -52,6 +55,9 @@ class ExecuteFirstRouteStep(BaseStep):
 
     def run(self, state: PipelineState) -> Dict[str, Any]:
         left_pose, right_pose, mode = build_first_route_execution_poses(state)
+        routing_floor = float(state.config.routing_height_above_plane_m)
+        left_pose = enforce_pose_min_height(left_pose, state, routing_floor)
+        right_pose = enforce_pose_min_height(right_pose, state, routing_floor)
 
         left_msg = self._build_msg(left_pose["position"], left_pose["rotation"])
         right_msg = self._build_msg(right_pose["position"], right_pose["rotation"])

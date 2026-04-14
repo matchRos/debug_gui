@@ -1,8 +1,10 @@
 import numpy as np
 
+from cable_routing.debug_gui.backend.planes import point_at_plane_height
+
 
 class GraspPoseService:
-    def compute_pose(self, position, tangent):
+    def compute_pose(self, position, tangent, plane, grasp_height_above_plane_m: float):
         x_axis = tangent / (np.linalg.norm(tangent) + 1e-8)
 
         z_axis = np.array([0.0, 0.0, 1.0])
@@ -30,9 +32,13 @@ class GraspPoseService:
 
         R = np.stack([x_axis_rot, y_axis_rot, z_axis], axis=1)
 
-        # enforce table height
+        # Enforce grasp height relative to configured routing plane.
         position = np.asarray(position).astype(float)
-        position[2] = 0.175  # table (0.05) + 5 cm safety
+        position = point_at_plane_height(
+            position,
+            plane,
+            grasp_height_above_plane_m,
+        )
 
         # TODO: fix calibration errors
         position[
@@ -45,11 +51,16 @@ class GraspPoseService:
             "approach_axis": approach_axis,
         }
 
-    def compute_grasp_poses(self, grasps):
+    def compute_grasp_poses(self, grasps, plane, grasp_height_above_plane_m: float):
         poses = []
 
         for g in grasps:
-            pose = self.compute_pose(g["position"], g["tangent"])
+            pose = self.compute_pose(
+                g["position"],
+                g["tangent"],
+                plane,
+                grasp_height_above_plane_m,
+            )
 
             # Preserve cable order information for later staggered descend
             pose["path_index"] = int(g["index"])

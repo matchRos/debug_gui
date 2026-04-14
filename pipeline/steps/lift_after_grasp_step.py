@@ -5,7 +5,10 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
-from cable_routing.debug_gui.pipeline.arm_motion_utils import wait_until_robot_settled
+from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    enforce_pose_min_height,
+    wait_until_robot_settled,
+)
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -71,6 +74,13 @@ class LiftAfterGraspStep(BaseStep):
             raise RuntimeError("Need exactly one left and one right grasp pose.")
 
         lift_distance = 0.02  # 2 cm
+        detangle_floor = float(
+            state.config.routing_height_above_plane_m
+            + state.config.detangle_offset_from_routing_m
+        )
+
+        left_pose = enforce_pose_min_height(left_pose, state, detangle_floor)
+        right_pose = enforce_pose_min_height(right_pose, state, detangle_floor)
 
         left_pos = np.asarray(left_pose["position"]).astype(float).copy()
         right_pos = np.asarray(right_pose["position"]).astype(float).copy()

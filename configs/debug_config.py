@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Tuple
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -26,6 +26,26 @@ class DebugConfig:
     # Format: (x, y)
     trace_start_points: Tuple[Tuple[int, int], ...] = ((100, 100),)
     trace_end_points: Optional[Tuple[Tuple[int, int], ...]] = None
+
+    # Plane model (future-proof: multiple planes, clip->plane assignment).
+    routing_plane_default_id: str = "main"
+    routing_planes: Dict[str, Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "main": {
+                "origin": [0.0, 0.0, 0.15],
+                "normal": [0.0, 0.0, 1.0],
+                "u_axis": [1.0, 0.0, 0.0],
+                "v_axis": [0.0, 1.0, 0.0],
+            }
+        }
+    )
+    clip_plane_assignments: Dict[int, str] = field(default_factory=dict)
+
+    # Heights relative to routing plane.
+    routing_height_above_plane_m: float = 0.025
+    grasp_height_above_plane_m: float = 0.025
+    pregrasp_offset_from_grasp_m: float = 0.08
+    detangle_offset_from_routing_m: float = 0.04
 
     cam_to_robot_left_trans_path = os.path.join(
         BASE_DIR, "configs/cameras/zed_to_world_left.tf"

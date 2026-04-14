@@ -4,7 +4,10 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
-from cable_routing.debug_gui.pipeline.arm_motion_utils import wait_until_robot_settled
+from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    enforce_pose_min_height,
+    wait_until_robot_settled,
+)
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -97,6 +100,10 @@ class DescendToGraspStep(BaseStep):
             first_pose = right_grasp
             second_arm = "left"
             second_pose = left_grasp
+
+        grasp_floor = float(state.config.grasp_height_above_plane_m)
+        first_pose = enforce_pose_min_height(first_pose, state, grasp_floor)
+        second_pose = enforce_pose_min_height(second_pose, state, grasp_floor)
 
         first_msg, first_quat = self._build_msg(
             first_pose["position"], first_pose["rotation"]

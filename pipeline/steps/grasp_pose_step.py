@@ -6,6 +6,7 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.grasp_pose_service import (
     GraspPoseService,
 )
+from cable_routing.debug_gui.backend.planes import get_routing_plane
 
 
 class GraspPoseStep(BaseStep):
@@ -20,7 +21,13 @@ class GraspPoseStep(BaseStep):
         if not hasattr(state, "grasps"):
             raise RuntimeError("No grasps available.")
 
-        poses = self.service.compute_grasp_poses(state.grasps)
+        plane = get_routing_plane(state.config)
+        grasp_height = float(state.config.grasp_height_above_plane_m)
+        poses = self.service.compute_grasp_poses(
+            state.grasps,
+            plane=plane,
+            grasp_height_above_plane_m=grasp_height,
+        )
 
         if len(poses) != 2:
             raise RuntimeError("Dual-arm grasp requires exactly 2 grasp poses.")

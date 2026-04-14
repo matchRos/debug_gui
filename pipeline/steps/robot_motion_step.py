@@ -4,6 +4,7 @@ from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
 
+from cable_routing.debug_gui.pipeline.arm_motion_utils import enforce_pose_min_height
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -52,6 +53,13 @@ class RobotMotionStep(BaseStep):
 
         if left_pose is None or right_pose is None:
             raise RuntimeError("Need exactly one left pose and one right pose.")
+
+        pregrasp_floor = float(
+            state.config.grasp_height_above_plane_m
+            + state.config.pregrasp_offset_from_grasp_m
+        )
+        left_pose = enforce_pose_min_height(left_pose, state, pregrasp_floor)
+        right_pose = enforce_pose_min_height(right_pose, state, pregrasp_floor)
 
         left_pos = left_pose["position"]
         right_pos = right_pose["position"]

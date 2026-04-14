@@ -5,6 +5,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 from sensor_msgs.msg import JointState
+from cable_routing.debug_gui.backend.planes import ensure_min_plane_height, get_routing_plane
 
 
 def split_dual_arm_poses(poses):
@@ -299,3 +300,23 @@ def wait_until_robot_settled(
                 stable_since = None
     finally:
         sub.unregister()
+
+
+def enforce_pose_min_height(
+    pose: dict,
+    state,
+    min_height_above_plane_m: float,
+    clip_id=None,
+) -> dict:
+    """
+    Return a pose copy with position clamped to a minimum distance above
+    the configured routing plane.
+    """
+    plane = get_routing_plane(state.config, clip_id=clip_id)
+    out = dict(pose)
+    out["position"] = ensure_min_plane_height(
+        np.asarray(pose["position"], dtype=float).copy(),
+        plane,
+        float(min_height_above_plane_m),
+    )
+    return out

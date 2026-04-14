@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 
 from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_PEG
+from cable_routing.debug_gui.backend.planes import (
+    ensure_min_plane_height,
+    get_routing_plane,
+)
 from cable_routing.debug_gui.pipeline.arm_motion_utils import validate_min_distance
 from cable_routing.env.ext_camera.utils.img_utils import get_world_coord_from_pixel_coord
 
@@ -78,15 +82,20 @@ def build_first_route_execution_poses(
         raise RuntimeError("Missing first_route_curr_clip_id or clips.")
     curr_clip = state.clips[curr_idx]
     clip_type = int(curr_clip.clip_type)
+    plane = get_routing_plane(state.config, clip_id=curr_idx)
+    routing_height = float(state.config.routing_height_above_plane_m)
 
     primary_px = np.asarray(state.first_route_target_px, dtype=float).reshape(2)
     primary_pos = _pixel_to_world_clip(primary_px, state, primary_arm)
+    primary_pos = ensure_min_plane_height(primary_pos, plane, routing_height)
     primary_rot = _pose_for_arm(state.grasp_poses, primary_arm)["rotation"]
     primary_pose = {"position": primary_pos, "rotation": np.asarray(primary_rot)}
 
     secondary_pose = _pose_for_arm(state.grasp_poses, secondary_arm)
+    secondary_hold_pos = np.asarray(secondary_pose["position"], dtype=float).copy()
+    secondary_hold_pos = ensure_min_plane_height(secondary_hold_pos, plane, routing_height)
     secondary_hold = {
-        "position": np.asarray(secondary_pose["position"], dtype=float).copy(),
+        "position": secondary_hold_pos,
         "rotation": np.asarray(secondary_pose["rotation"]),
     }
 
@@ -110,6 +119,7 @@ def build_first_route_execution_poses(
 
     secondary_px = np.asarray(sec_px, dtype=float).reshape(2)
     secondary_pos = _pixel_to_world_clip(secondary_px, state, secondary_arm)
+    secondary_pos = ensure_min_plane_height(secondary_pos, plane, routing_height)
     secondary_rot = secondary_pose["rotation"]
     secondary_target = {"position": secondary_pos, "rotation": np.asarray(secondary_rot)}
 
