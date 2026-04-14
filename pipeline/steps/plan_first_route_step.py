@@ -8,6 +8,9 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.visualization_service import VisualizationService
 from cable_routing.env.robots.misc import calculate_sequence
 
+# Matches debug board / board_setup_gui_with_U_Clip: type 1 = Peg.
+CLIP_TYPE_PEG = 1
+
 
 class PlanFirstRouteStep(BaseStep):
     name = "plan_first_route"
@@ -61,6 +64,53 @@ class PlanFirstRouteStep(BaseStep):
 
         return np.array([float(uv[0]), float(uv[1])], dtype=float)
 
+    def _compute_secondary_support_px(
+        self,
+        prev_clip,
+        curr_clip,
+        clockwise_direction: int,
+        img_shape,
+        extension_factor: float = 50.0,
+        secondary_along_prev_normal: float = 0.5,
+    ):
+        """
+        Pixel-space helper target for the second arm, aligned with
+        env_new.execute_dual_slide_to_cable_node (normal + prev_to_normal).
+
+        Not used for peg clips (type == CLIP_TYPE_PEG): second arm is omitted there.
+        """
+        curr_clip_pos = self._clip_px(curr_clip)
+        prev_clip_pos = self._clip_px(prev_clip)
+
+        clip_vector = curr_clip_pos - prev_clip_pos
+        norm_cv = np.linalg.norm(clip_vector)
+        if norm_cv < 1e-6:
+            return None
+
+        if clockwise_direction < 0:
+            normal = np.array([-clip_vector[1], clip_vector[0]], dtype=float)
+        else:
+            normal = np.array([clip_vector[1], -clip_vector[0]], dtype=float)
+
+        normal = normal / np.linalg.norm(normal)
+        normal_point = curr_clip_pos + normal * extension_factor
+
+        prev_to_normal = normal_point - prev_clip_pos
+        prev_to_normal = prev_to_normal / (np.linalg.norm(prev_to_normal) + 1e-8)
+
+        clip_distance = float(np.linalg.norm(curr_clip_pos - prev_clip_pos))
+
+        # Same construction as execute_dual_slide_to_cable_node for the "B" secondary point.
+        target_secondary = prev_clip_pos + prev_to_normal * (
+            clip_distance * secondary_along_prev_normal
+        )
+
+        h, w = int(img_shape[0]), int(img_shape[1])
+        target_secondary[0] = float(np.clip(target_secondary[0], 0, w - 1))
+        target_secondary[1] = float(np.clip(target_secondary[1], 0, h - 1))
+
+        return target_secondary
+
     def _compute_preview_target_px(
         self,
         prev_clip,
@@ -105,6 +155,11 @@ class PlanFirstRouteStep(BaseStep):
         primary_arm,
         start_px,
         target_px,
+        secondary_arm=None,
+        secondary_start_px=None,
+        secondary_target_px=None,
+        show_secondary=False,
+        secondary_skipped_peg=False,
     ):
         overlay = image.copy()
 
@@ -166,10 +221,44 @@ class PlanFirstRouteStep(BaseStep):
             cv2.LINE_AA,
         )
 
-        direction_text = "CW" if clockwise_direction else "CCW"
+        if show_secondary and secondary_start_px is not None and secondary_target_px is not None:
+            ss = np.asarray(secondary_start_px, dtype=float).astype(int)
+            st = np.asarray(secondary_target_px, dtype=float).astype(int)
+            cv2.circle(overlay, tuple(ss), 8, (180, 255, 120), -1)
+            cv2.circle(overlay, tuple(st), 8, (120, 200, 255), -1)
+            cv2.line(overlay, tuple(ss), tuple(st), (120, 220, 180), 2)
+            cv2.putText(
+                overlay,
+                "2nd start",
+                (int(ss[0]) + 8, int(ss[1]) + 16),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (180, 255, 120),
+                1,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                overlay,
+                "2nd target",
+                (int(st[0]) + 8, int(st[1]) + 16),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (120, 200, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+        # calculate_sequence: -1 == clockwise, +1 == counter-clockwise
+        direction_text = "CW" if clockwise_direction < 0 else "CCW"
+        if show_secondary and secondary_arm:
+            sec_note = f" | 2nd={secondary_arm}"
+        elif secondary_skipped_peg:
+            sec_note = " | 2nd=— (peg)"
+        else:
+            sec_note = " | 2nd=—"
         info_text = (
             f"{prev_clip_id} -> {curr_clip_id} -> {next_clip_id} | "
-            f"{direction_text} | arm={primary_arm}"
+            f"{direction_text} | arm={primary_arm}{sec_note}"
         )
 
         cv2.putText(
@@ -234,6 +323,28 @@ class PlanFirstRouteStep(BaseStep):
             offset_px=60.0,
         )
 
+        secondary_arm = "right" if primary_arm == "left" else "left"
+        secondary_skipped_peg = curr_clip.clip_type == CLIP_TYPE_PEG
+        show_secondary = not secondary_skipped_peg
+        secondary_start_px = None
+        secondary_target_px = None
+        if show_secondary:
+            secondary_pose = self._pose_for_arm(state.grasp_poses, secondary_arm)
+            if secondary_pose is None:
+                show_secondary = False
+            else:
+                secondary_start_px = self._world_to_pixel(
+                    secondary_pose["position"], secondary_arm, state
+                )
+                secondary_target_px = self._compute_secondary_support_px(
+                    prev_clip=prev_clip,
+                    curr_clip=curr_clip,
+                    clockwise_direction=int(clockwise_direction),
+                    img_shape=state.rgb_image.shape,
+                )
+                if secondary_target_px is None:
+                    show_secondary = False
+
         state.current_primary_arm = primary_arm
         state.first_route_prev_clip_id = prev_clip_id
         state.first_route_curr_clip_id = curr_clip_id
@@ -242,6 +353,10 @@ class PlanFirstRouteStep(BaseStep):
         state.first_route_sequence = sequence
         state.first_route_start_px = start_px
         state.first_route_target_px = target_px
+        state.first_route_secondary_arm = secondary_arm if show_secondary else None
+        state.first_route_secondary_start_px = secondary_start_px
+        state.first_route_secondary_target_px = secondary_target_px
+        state.first_route_secondary_shown = show_secondary
 
         overlay = self._draw_overlay(
             image=state.rgb_image,
@@ -253,6 +368,11 @@ class PlanFirstRouteStep(BaseStep):
             primary_arm=primary_arm,
             start_px=start_px,
             target_px=target_px,
+            secondary_arm=secondary_arm,
+            secondary_start_px=secondary_start_px,
+            secondary_target_px=secondary_target_px,
+            show_secondary=show_secondary,
+            secondary_skipped_peg=secondary_skipped_peg,
         )
 
         state.routing_overlay = overlay
@@ -272,4 +392,16 @@ class PlanFirstRouteStep(BaseStep):
             "curr_clip_orientation": curr_clip.orientation,
             "start_px": [float(start_px[0]), float(start_px[1])],
             "target_px": [float(target_px[0]), float(target_px[1])],
+            "secondary_arm": secondary_arm if show_secondary else None,
+            "secondary_shown": show_secondary,
+            "secondary_start_px": (
+                [float(secondary_start_px[0]), float(secondary_start_px[1])]
+                if show_secondary and secondary_start_px is not None
+                else None
+            ),
+            "secondary_target_px": (
+                [float(secondary_target_px[0]), float(secondary_target_px[1])]
+                if show_secondary and secondary_target_px is not None
+                else None
+            ),
         }
