@@ -4,7 +4,10 @@ import numpy as np
 
 from cable_routing.debug_gui.backend.debug_board import DebugBoard
 from cable_routing.debug_gui.backend.debug_context import DebugContext
-from cable_routing.debug_gui.configs.debug_config import DebugConfig
+from cable_routing.debug_gui.backend.board_yz_calibration import (
+    load_board_yz_calibration_optional,
+)
+from cable_routing.debug_gui.configs.debug_config import DebugConfig, load_debug_config
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 from autolab_core import RigidTransform
@@ -20,7 +23,7 @@ class InitEnvironmentStep(BaseStep):
         super().__init__()
 
     def _create_debug_config(self) -> DebugConfig:
-        return DebugConfig()
+        return load_debug_config()
 
     def _try_create_board(
         self, config: DebugConfig
@@ -92,6 +95,10 @@ class InitEnvironmentStep(BaseStep):
             tracer=tracer,
         )
 
+        context.board_yz_calibration = load_board_yz_calibration_optional(
+            getattr(config, "board_calibration_yaml", None)
+        )
+
         context.T_CAM_BASE = {}
 
         try:
@@ -130,6 +137,7 @@ class InitEnvironmentStep(BaseStep):
             "debug_image_path": config.debug_image_path,
             "trace_start_points": config.trace_start_points,
             "trace_end_points": config.trace_end_points,
+            "board_yz_calibration_loaded": context.board_yz_calibration is not None,
         }
 
         return result

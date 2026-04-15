@@ -5,7 +5,7 @@ import numpy as np
 
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
-from cable_routing.debug_gui.backend.visualization_service import VisualizationService
+from cable_routing.debug_gui.backend.board_projection import pixel_from_world_debug
 from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_PEG
 from cable_routing.env.robots.misc import calculate_sequence
 
@@ -18,7 +18,6 @@ class PlanFirstRouteStep(BaseStep):
 
     def __init__(self):
         super().__init__()
-        self._viz = VisualizationService()
 
     def _clip_px(self, clip):
         return np.array([float(clip.x), float(clip.y)], dtype=float)
@@ -39,21 +38,28 @@ class PlanFirstRouteStep(BaseStep):
 
     def _world_to_pixel(self, world_point, arm, state: PipelineState):
         env = state.env
-        if env is None or env.camera is None:
+        if env is None:
+            raise RuntimeError("Environment not available for world->pixel projection.")
+
+        intrinsic = env.camera.intrinsic if env.camera is not None else None
+        T_cam_base = None
+        if hasattr(env, "T_CAM_BASE") and env.T_CAM_BASE and arm in env.T_CAM_BASE:
+            T_cam_base = env.T_CAM_BASE[arm]
+
+        if getattr(env, "board_yz_calibration", None) is None and (
+            intrinsic is None or T_cam_base is None
+        ):
             raise RuntimeError(
-                "Camera/environment not available for world->pixel projection."
+                "Camera / T_CAM_BASE not available for pinhole world->pixel projection."
             )
 
-        if not hasattr(env, "T_CAM_BASE") or arm not in env.T_CAM_BASE:
-            raise RuntimeError(f"T_CAM_BASE for arm '{arm}' not available.")
-
-        T_cam_base = env.T_CAM_BASE[arm]
-
-        # Use the same math as VisualizationService (avoids autolab Point / apply shape rules).
-        uv = self._viz.project_world_to_pixel(
-            world_point,
-            env.camera.intrinsic,
-            T_cam_base,
+        uv = pixel_from_world_debug(
+            env,
+            state.config,
+            np.asarray(world_point, dtype=float),
+            arm=arm,
+            intrinsic=intrinsic,
+            T_cam_base=T_cam_base,
         )
         if uv is None:
             raise RuntimeError(

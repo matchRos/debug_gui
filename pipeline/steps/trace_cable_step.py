@@ -48,6 +48,39 @@ class TraceCableStep(BaseStep):
 
         start_points = self._resolve_start_points(state)
         end_points = self._resolve_end_points(state)
+        anchor_point = None
+        clip_points = None
+        preferred_direction_xy = None
+        configured_clip_positions = None
+
+        try:
+            board = getattr(state.env, "board", None)
+            if board is not None and hasattr(board, "get_clips"):
+                configured_clip_positions = []
+                for clip in board.get_clips():
+                    configured_clip_positions.append(
+                        (str(clip.clip_id), int(clip.x), int(clip.y))
+                    )
+        except Exception:
+            configured_clip_positions = None
+        if state.clips is not None and len(state.clips) > 0:
+            try:
+                clip_idx = 0
+                if state.routing is not None and len(state.routing) > 0:
+                    clip_idx = int(state.routing[0])
+                clip = state.clips[clip_idx]
+                anchor_point = (int(clip.x), int(clip.y))
+                clip_points = [(int(c.x), int(c.y)) for c in state.clips]
+                if state.routing is not None and len(state.routing) > 1:
+                    nxt = state.clips[int(state.routing[1])]
+                    preferred_direction_xy = (
+                        float(nxt.x) - float(clip.x),
+                        float(nxt.y) - float(clip.y),
+                    )
+            except Exception:
+                anchor_point = None
+                clip_points = None
+                preferred_direction_xy = None
 
         if state.env.tracer is None:
             overlay = self.tracing_service.create_no_trace_overlay(
@@ -55,6 +88,7 @@ class TraceCableStep(BaseStep):
                 start_points=start_points,
                 end_points=end_points,
                 message="Tracer unavailable - showing only start/end points",
+                configured_clip_positions=configured_clip_positions,
             )
             state.trace_overlay = overlay
             state.path_in_pixels = None
@@ -76,16 +110,41 @@ class TraceCableStep(BaseStep):
             end_points=end_points,
             viz=False,
             start_mode=getattr(state.config, "trace_start_mode", "auto_from_config"),
+            anchor_point=anchor_point,
+            clip_points=clip_points,
+            preferred_direction_xy=preferred_direction_xy,
+            max_start_dist_px=float(
+                getattr(state.config, "trace_anchor_max_start_dist_px", 260.0)
+            ),
+            min_route_dot=float(
+                getattr(state.config, "trace_candidate_min_route_dot", -0.15)
+            ),
+            outward_min_delta_px=float(
+                getattr(state.config, "trace_anchor_outward_min_delta_px", 8.0)
+            ),
+            seed_order_descending_from_anchor=bool(
+                getattr(state.config, "trace_seed_order_descending_from_anchor", True)
+            ),
+            clip_a_p1_offset_px=float(
+                getattr(state.config, "trace_auto_clip_a_p1_offset_px", 20.0)
+            ),
+            clip_a_p2_offset_px=float(
+                getattr(state.config, "trace_auto_clip_a_p2_offset_px", 40.0)
+            ),
         )
 
         path_in_pixels = trace_result["path_in_pixels"]
         trace_status = trace_result["trace_status"]
+        tracer_start_points_used = trace_result.get("tracer_start_points_used")
+        tracer_start_point_count = int(trace_result.get("tracer_start_point_count", 0))
 
         overlay = self.tracing_service.create_trace_overlay(
             image_rgb=image_rgb,
             start_points=start_points,
             end_points=end_points,
             path_in_pixels=path_in_pixels,
+            tracer_start_points_used=tracer_start_points_used,
+            configured_clip_positions=configured_clip_positions,
         )
 
         state.trace_overlay = overlay
@@ -101,5 +160,7 @@ class TraceCableStep(BaseStep):
             "trace_status": str(trace_status),
             "num_path_points": num_points,
             "start_points": start_points,
+            "tracer_start_point_count": tracer_start_point_count,
+            "tracer_start_points_used": tracer_start_points_used,
             "end_points": end_points,
         }

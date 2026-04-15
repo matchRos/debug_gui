@@ -7,11 +7,12 @@ second arm holds grasp). Add per-type modules later and dispatch from
 build_first_route_execution_poses.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 
 from cable_routing.debug_gui.backend.clip_types import CLIP_TYPE_C_CLIP, CLIP_TYPE_PEG
+from cable_routing.debug_gui.backend.board_projection import world_from_pixel_debug
 from cable_routing.debug_gui.backend.planes import (
     ensure_min_plane_height,
     get_routing_plane,
@@ -20,14 +21,22 @@ from cable_routing.debug_gui.motion_primitives.c_clip import (
     build_c_clip_center_pixels,
     build_c_clip_entry_pixels,
 )
-from cable_routing.debug_gui.pipeline.arm_motion_utils import validate_min_distance
-from cable_routing.env.ext_camera.utils.img_utils import get_world_coord_from_pixel_coord
+from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    is_dual_arm_grasp,
+    validate_min_distance,
+)
 
 
-def _pose_for_arm(grasp_poses: List[Dict[str, Any]], arm_name: str) -> Dict[str, Any]:
-    for pose in grasp_poses:
+def _grasp_pose_for_arm_or_fallback(state: Any, arm_name: str) -> Dict[str, Any]:
+    """
+    With a single physical grasp, rotation/anchor from the only grasp pose is reused
+    when addressing the other arm symbolically (execute step will not move it).
+    """
+    for pose in state.grasp_poses:
         if pose.get("arm") == arm_name:
             return pose
+    if len(state.grasp_poses) == 1:
+        return state.grasp_poses[0]
     raise RuntimeError(f"No grasp pose for arm '{arm_name}'.")
 
 
@@ -36,21 +45,15 @@ def _pixel_to_world_clip(
     state: Any,
     arm: str,
 ) -> np.ndarray:
-    env = state.env
-    if arm not in env.T_CAM_BASE:
-        raise RuntimeError(f"T_CAM_BASE missing for arm '{arm}'.")
-    intrinsic = env.camera.intrinsic
-    T = env.T_CAM_BASE[arm]
     img_shape = state.rgb_image.shape
-    w = get_world_coord_from_pixel_coord(
+    return world_from_pixel_debug(
+        state.env,
+        state.config,
         (float(uv[0]), float(uv[1])),
-        intrinsic,
-        T,
-        image_shape=img_shape,
-        is_clip=True,
         arm=arm,
-    )
-    return np.asarray(w, dtype=float).reshape(3)
+        is_clip=True,
+        image_shape=img_shape,
+    ).reshape(3)
 
 
 def _move_pixel_along_route(primary_px: np.ndarray, state: Any) -> np.ndarray:
@@ -92,10 +95,11 @@ def build_first_route_execution_poses(
     Returns:
         left_pose_dict, right_pose_dict, mode ('peg_hold' | 'dual_slide')
     """
-    if state.env is None or state.env.camera is None:
-        raise RuntimeError("Environment / camera not available.")
-    if not hasattr(state.env, "T_CAM_BASE"):
-        raise RuntimeError("T_CAM_BASE not available.")
+    if state.env is None:
+        raise RuntimeError("Environment not available.")
+    if getattr(state.env, "board_yz_calibration", None) is None:
+        if state.env.camera is None or not hasattr(state.env, "T_CAM_BASE"):
+            raise RuntimeError("Camera / T_CAM_BASE not available (no board homography).")
     if state.rgb_image is None:
         raise RuntimeError("No rgb_image in state.")
     if not hasattr(state, "grasp_poses"):
@@ -120,10 +124,10 @@ def build_first_route_execution_poses(
     primary_px = _move_pixel_along_route(primary_px, state)
     primary_pos = _pixel_to_world_clip(primary_px, state, primary_arm)
     primary_pos = ensure_min_plane_height(primary_pos, plane, routing_height)
-    primary_rot = _pose_for_arm(state.grasp_poses, primary_arm)["rotation"]
+    primary_rot = _grasp_pose_for_arm_or_fallback(state, primary_arm)["rotation"]
     primary_pose = {"position": primary_pos, "rotation": np.asarray(primary_rot)}
 
-    secondary_pose = _pose_for_arm(state.grasp_poses, secondary_arm)
+    secondary_pose = _grasp_pose_for_arm_or_fallback(state, secondary_arm)
     secondary_hold_pos = np.asarray(secondary_pose["position"], dtype=float).copy()
     secondary_hold_pos = ensure_min_plane_height(secondary_hold_pos, plane, routing_height)
     secondary_hold = {
@@ -137,7 +141,8 @@ def build_first_route_execution_poses(
             left, right = primary_pose, secondary_hold
         else:
             left, right = secondary_hold, primary_pose
-        validate_min_distance(left, right, min_dist_xyz, label="First route (peg)")
+        if is_dual_arm_grasp(state.config):
+            validate_min_distance(left, right, min_dist_xyz, label="First route (peg)")
         return left, right, "peg_hold"
 
     if clip_type == CLIP_TYPE_C_CLIP:
@@ -164,7 +169,8 @@ def build_first_route_execution_poses(
             left, right = primary_c_pose, secondary_c_pose
         else:
             left, right = secondary_c_pose, primary_c_pose
-        validate_min_distance(left, right, min_dist_xyz, label="First route (c_clip)")
+        if is_dual_arm_grasp(state.config):
+            validate_min_distance(left, right, min_dist_xyz, label="First route (c_clip)")
         return left, right, "c_clip_entry"
 
     if not getattr(state, "first_route_secondary_shown", False):
@@ -187,7 +193,8 @@ def build_first_route_execution_poses(
     else:
         left, right = secondary_target, primary_pose
 
-    validate_min_distance(left, right, min_dist_xyz, label="First route (dual)")
+    if is_dual_arm_grasp(state.config):
+        validate_min_distance(left, right, min_dist_xyz, label="First route (dual)")
     return left, right, "dual_slide"
 
 
@@ -198,15 +205,15 @@ def build_c_clip_centering_poses(
     """
     Second phase for C-clip: move from entry-side toward clip center lane.
     """
-    if state.env is None or state.env.camera is None:
-        raise RuntimeError("Environment / camera not available.")
-    if not hasattr(state.env, "T_CAM_BASE"):
-        raise RuntimeError("T_CAM_BASE not available.")
+    if state.env is None:
+        raise RuntimeError("Environment not available.")
+    if getattr(state.env, "board_yz_calibration", None) is None:
+        if state.env.camera is None or not hasattr(state.env, "T_CAM_BASE"):
+            raise RuntimeError("Camera / T_CAM_BASE not available (no board homography).")
     if state.rgb_image is None:
         raise RuntimeError("No rgb_image in state.")
     if not hasattr(state, "grasp_poses"):
         raise RuntimeError("No grasp_poses in state.")
-
     primary_arm = getattr(state, "current_primary_arm", None) or "left"
     secondary_arm = "right" if primary_arm == "left" else "left"
 
@@ -231,8 +238,8 @@ def build_c_clip_centering_poses(
     secondary_pos = _pixel_to_world_clip(secondary_px, state, secondary_arm)
     secondary_pos = ensure_min_plane_height(secondary_pos, plane, routing_height)
 
-    primary_rot = _pose_for_arm(state.grasp_poses, primary_arm)["rotation"]
-    secondary_rot = _pose_for_arm(state.grasp_poses, secondary_arm)["rotation"]
+    primary_rot = _grasp_pose_for_arm_or_fallback(state, primary_arm)["rotation"]
+    secondary_rot = _grasp_pose_for_arm_or_fallback(state, secondary_arm)["rotation"]
 
     primary_pose = {"position": primary_pos, "rotation": np.asarray(primary_rot)}
     secondary_pose = {"position": secondary_pos, "rotation": np.asarray(secondary_rot)}
@@ -242,5 +249,6 @@ def build_c_clip_centering_poses(
     else:
         left, right = secondary_pose, primary_pose
 
-    validate_min_distance(left, right, min_dist_xyz, label="C-clip centering")
+    if is_dual_arm_grasp(state.config):
+        validate_min_distance(left, right, min_dist_xyz, label="C-clip centering")
     return left, right, "c_clip_center"

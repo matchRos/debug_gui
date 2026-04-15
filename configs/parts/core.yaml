@@ -1,0 +1,24 @@
+# Core paths, board homography, and arm selection (single vs dual).
+# Paths are relative to the cable_routing package root unless absolute.
+
+board_cfg_path: cable_routing/configs/board/board_config.json
+default_routing: [0, 1, 2, 3]
+
+fallback_image_width: 1500
+fallback_image_height: 800
+
+# Fallback image when no camera (absolute path recommended).
+debug_image_path: "/ABSOLUTER/PFAD/ZU/DEINEM/BILD.png"
+
+cam_to_robot_left_trans_path: configs/cameras/zed_to_world_left.tf
+cam_to_robot_right_trans_path: configs/cameras/zed_to_world_right.tf
+
+# 2D homography pixel -> (Y,Z); world X is fixed separately (board_plane_x_m).
+board_calibration_yaml: debug_gui/configs/cameras/camera_robot_2d_calibration.yaml
+
+# World X of board plane (m). Must match calibration / physical setup.
+board_plane_x_m: 0.56
+
+dual_arm_grasp: false
+single_arm_nominal_tcp_left_m: [0.35, 0.22, 0.14]
+single_arm_nominal_tcp_right_m: [0.35, -0.22, 0.14]

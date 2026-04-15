@@ -23,3 +23,6 @@ class DebugContext:
     t_cam_base_right: Optional[np.ndarray] = None
 
     T_CAM_BASE: Optional[dict] = None
+
+    # Optional: homography pixel -> (Y,Z) at fixed board X (see board_calibration_yaml).
+    board_yz_calibration: Optional[Any] = None

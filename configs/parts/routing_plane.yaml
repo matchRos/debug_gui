@@ -1,0 +1,29 @@
+# Routing plane in base_link, heights along plane normal, grasp planning along trace.
+#
+# routing_planes.main.origin (metres):
+#   - origin[0] (X) is the board plane constant together with normal [-1,0,0].
+#   - origin[1], origin[2] (Y,Z) are only a reference point ON the plane; for a
+#     plane with normal along ±X they do NOT change the (Y,Z) coming from the
+#     homography — those come only from pixel_to_world. They matter for bookkeeping
+#     and for code that subtracts ``plane.origin``; you can set Y,Z to 0 if you prefer.
+#   Values are in metres (not centimetres).
+
+routing_plane_default_id: main
+clip_plane_assignments: {}
+
+routing_planes:
+  main:
+    origin: [0.56, 0.0, 0.18]
+    normal: [-1.0, 0.0, 0.0]
+    u_axis: [0.0, 0.0, 1.0]
+    v_axis: [0.0, 1.0, 0.0]
+
+routing_height_above_plane_m: 0.025
+grasp_height_above_plane_m: 0.025
+pregrasp_offset_from_grasp_m: 0.07
+detangle_offset_from_routing_m: 0.03
+
+# First grasp: min distance along traced path from peg (routing[0]) in world frame.
+grasp_min_clearance_from_first_peg_m: 0.05
+# Dual-arm: min arc length (m) along trace from first grasp to second.
+grasp_second_min_arc_from_first_grasp_m: 0.08

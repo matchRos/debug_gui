@@ -5,7 +5,9 @@ from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    MOTION_FRAME_ID,
     enforce_pose_min_height,
+    is_dual_arm_grasp,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -38,7 +40,7 @@ class DescendSecondToGraspStep(BaseStep):
 
         msg = PoseStamped()
         msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = "world"
+        msg.header.frame_id = MOTION_FRAME_ID
 
         msg.pose.position.x = float(pos[0])
         msg.pose.position.y = float(pos[1])
@@ -52,6 +54,12 @@ class DescendSecondToGraspStep(BaseStep):
         return msg, quat
 
     def run(self, state: PipelineState) -> Dict[str, object]:
+        if not is_dual_arm_grasp(state.config):
+            return {
+                "descend_sent": False,
+                "skipped": True,
+                "reason": "dual_arm_grasp disabled",
+            }
         if not hasattr(state, "descend_second_arm"):
             raise RuntimeError("No second descend arm stored in state.")
         if not hasattr(state, "second_grasp_pose"):

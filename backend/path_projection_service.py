@@ -1,15 +1,17 @@
 import numpy as np
 
+from cable_routing.debug_gui.backend.board_projection import world_from_pixel_debug
 from cable_routing.env.ext_camera.utils.img_utils import (
     get_world_coord_from_pixel_coord,
 )
 
 
 class PathProjectionService:
-    def convert_path_to_world(self, env, path_pixels, arm="right"):
+    def convert_path_to_world(self, env, path_pixels, arm="right", config=None):
         """
-        Convert a pixel path to world coordinates using the camera intrinsics
-        and the camera-to-base transform stored in the debug context.
+        Convert a pixel path to world coordinates using either:
+        - board YZ homography (``env.board_yz_calibration`` + ``config``), or
+        - pinhole camera model + ``T_CAM_BASE`` (legacy horizontal table).
         """
 
         if path_pixels is None or len(path_pixels) == 0:
@@ -18,28 +20,43 @@ class PathProjectionService:
         if env is None:
             raise RuntimeError("Environment not initialized.")
 
-        if env.camera is None:
-            raise RuntimeError("Camera not available in debug context.")
-
-        if not hasattr(env, "T_CAM_BASE"):
-            raise RuntimeError("DebugContext has no T_CAM_BASE transform.")
-
-        if arm not in env.T_CAM_BASE:
-            raise RuntimeError(f"Arm '{arm}' not found in T_CAM_BASE.")
-
-        intrinsic = env.camera.intrinsic
-        T_cam_base = env.T_CAM_BASE[arm]
-
         world_path = []
         for pixel_coord in path_pixels:
             pixel_coord = np.asarray(pixel_coord).squeeze().reshape(-1)
-            pixel_xy = (int(pixel_coord[0]), int(pixel_coord[1]))
+            pixel_xy = (float(pixel_coord[0]), float(pixel_coord[1]))
 
-            world_coord = get_world_coord_from_pixel_coord(
-                pixel_xy,
-                intrinsic,
-                T_cam_base,
-            )
+            if getattr(env, "board_yz_calibration", None) is not None:
+                if config is None:
+                    raise RuntimeError(
+                        "config is required for board YZ homography path projection."
+                    )
+                world_coord = world_from_pixel_debug(
+                    env,
+                    config,
+                    pixel_xy,
+                    arm=arm,
+                    is_clip=False,
+                    image_shape=None,
+                )
+            else:
+                if env.camera is None:
+                    raise RuntimeError("Camera not available in debug context.")
+
+                if not hasattr(env, "T_CAM_BASE"):
+                    raise RuntimeError("DebugContext has no T_CAM_BASE transform.")
+
+                if arm not in env.T_CAM_BASE:
+                    raise RuntimeError(f"Arm '{arm}' not found in T_CAM_BASE.")
+
+                intrinsic = env.camera.intrinsic
+                T_cam_base = env.T_CAM_BASE[arm]
+
+                world_coord = get_world_coord_from_pixel_coord(
+                    (int(pixel_xy[0]), int(pixel_xy[1])),
+                    intrinsic,
+                    T_cam_base,
+                )
+
             world_path.append(world_coord)
 
         return np.array(world_path)

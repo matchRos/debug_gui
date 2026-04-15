@@ -5,12 +5,9 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.pregrasp_pose_service import (
     PreGraspPoseService,
 )
-from cable_routing.debug_gui.backend.planes import get_routing_plane
-
-
 class PreGraspPoseStep(BaseStep):
     name = "pregrasp_pose"
-    description = "Compute pre-grasp poses above grasp poses."
+    description = "Compute pre-grasp poses (same Y/Z as grasp, retracted in -X)."
 
     def __init__(self):
         super().__init__()
@@ -20,14 +17,10 @@ class PreGraspPoseStep(BaseStep):
         if not hasattr(state, "grasp_poses"):
             raise RuntimeError("No grasp poses available.")
 
-        plane = get_routing_plane(state.config)
         pregrasp_offset = float(state.config.pregrasp_offset_from_grasp_m)
-        routing_height = float(state.config.routing_height_above_plane_m)
         pregrasp_poses = self.service.compute_pregrasp_poses(
             state.grasp_poses,
-            plane=plane,
             pregrasp_offset_from_grasp_m=pregrasp_offset,
-            routing_height_above_plane_m=routing_height,
         )
 
         state.pregrasp_poses = pregrasp_poses

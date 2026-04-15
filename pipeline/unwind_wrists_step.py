@@ -5,6 +5,8 @@ import rospy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 
+from cable_routing.debug_gui.backend.planes import get_routing_plane
+from cable_routing.debug_gui.pipeline.arm_motion_utils import is_dual_arm_grasp
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -57,16 +59,19 @@ class UnwindWristsStep(BaseStep):
                 return pose
         return None
 
-    def _is_tool_vertical_enough(self, pose, cosine_threshold=0.9):
+    def _is_tool_vertical_enough(
+        self, pose, plane_normal: np.ndarray, cosine_threshold=0.9
+    ):
         R = np.asarray(pose["rotation"], dtype=float).reshape(3, 3)
 
         # Tool z-axis = third column of rotation matrix
         tool_z = R[:, 2]
         tool_z = tool_z / (np.linalg.norm(tool_z) + 1e-8)
 
-        world_z = np.array([0.0, 0.0, 1.0], dtype=float)
+        n = np.asarray(plane_normal, dtype=float).reshape(3)
+        n /= np.linalg.norm(n) + 1e-8
 
-        alignment = float(abs(np.dot(tool_z, world_z)))
+        alignment = float(abs(np.dot(tool_z, n)))
         return alignment >= cosine_threshold, alignment
 
     def _find_joint_index(self, joint_state: JointState, candidates):
@@ -98,14 +103,29 @@ class UnwindWristsStep(BaseStep):
         joint_state = self._wait_for_joint_state(timeout=2.0)
 
         poses = state.pregrasp_poses
+        plane = get_routing_plane(state.config)
+        n = np.asarray(plane.normal, dtype=float).reshape(3)
+
         left_pose = self._get_pose_for_arm(poses, "left")
         right_pose = self._get_pose_for_arm(poses, "right")
 
-        if left_pose is None or right_pose is None:
-            raise RuntimeError("Need exactly one left and one right pregrasp pose.")
+        if is_dual_arm_grasp(state.config):
+            if left_pose is None or right_pose is None:
+                raise RuntimeError("Need exactly one left and one right pregrasp pose.")
+        else:
+            if left_pose is None and right_pose is None:
+                raise RuntimeError("No pregrasp pose found for unwind.")
 
-        left_ok, left_align = self._is_tool_vertical_enough(left_pose)
-        right_ok, right_align = self._is_tool_vertical_enough(right_pose)
+        left_ok, left_align = (
+            self._is_tool_vertical_enough(left_pose, n)
+            if left_pose is not None
+            else (False, 0.0)
+        )
+        right_ok, right_align = (
+            self._is_tool_vertical_enough(right_pose, n)
+            if right_pose is not None
+            else (False, 0.0)
+        )
 
         # Adjust these names if your /joint_states naming differs
         left_idx, left_name = self._find_joint_index(
@@ -137,19 +157,21 @@ class UnwindWristsStep(BaseStep):
         left_action = "none"
         right_action = "none"
 
-        if left_ok and q7_left > threshold:
-            velocities[left_idx] = -target_speed
-            left_action = "negative_unwind"
-        elif left_ok and q7_left < -threshold:
-            velocities[left_idx] = target_speed
-            left_action = "positive_unwind"
+        if left_pose is not None:
+            if left_ok and q7_left > threshold:
+                velocities[left_idx] = -target_speed
+                left_action = "negative_unwind"
+            elif left_ok and q7_left < -threshold:
+                velocities[left_idx] = target_speed
+                left_action = "positive_unwind"
 
-        if right_ok and q7_right > threshold:
-            velocities[right_idx] = -target_speed
-            right_action = "negative_unwind"
-        elif right_ok and q7_right < -threshold:
-            velocities[right_idx] = target_speed
-            right_action = "positive_unwind"
+        if right_pose is not None:
+            if right_ok and q7_right > threshold:
+                velocities[right_idx] = -target_speed
+                right_action = "negative_unwind"
+            elif right_ok and q7_right < -threshold:
+                velocities[right_idx] = target_speed
+                right_action = "positive_unwind"
 
         if np.allclose(velocities, 0.0):
             return {

@@ -31,8 +31,8 @@ class VisualizeGraspsStep(BaseStep):
             img = self.service.draw_grasps(
                 image=img,
                 poses=[pose],
-                intrinsic=env.camera.intrinsic,
-                T_cam_base=env.T_CAM_BASE[arm],
+                env=env,
+                config=state.config,
                 arm=arm,
             )
 

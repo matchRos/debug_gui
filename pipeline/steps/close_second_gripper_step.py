@@ -18,8 +18,18 @@ class CloseSecondGripperStep(BaseStep):
             rospy.init_node("debug_gui_close_second_gripper", anonymous=True)
 
     def run(self, state: PipelineState) -> Dict[str, object]:
-        if not hasattr(state, "descend_second_arm"):
-            raise RuntimeError("No second descend arm stored in state.")
+        if not bool(getattr(state.config, "dual_arm_grasp", True)):
+            return {
+                "gripper_closed": False,
+                "skipped": True,
+                "reason": "dual_arm_grasp disabled",
+            }
+        if not hasattr(state, "descend_second_arm") or state.descend_second_arm is None:
+            return {
+                "gripper_closed": False,
+                "skipped": True,
+                "reason": "no second arm descend",
+            }
 
         second_arm = state.descend_second_arm
 

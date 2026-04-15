@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 
+from cable_routing.debug_gui.backend.board_projection import pixel_from_world_debug
+
 
 class VisualizationService:
     def project_world_to_pixel(self, point, intrinsic, T_cam_base):
@@ -24,14 +26,25 @@ class VisualizationService:
 
         return int(u), int(v)
 
-    def draw_grasps(self, image, poses, intrinsic, T_cam_base, arm="right"):
+    def draw_grasps(self, image, poses, env, config, arm="right"):
         img = image.copy()
+        intrinsic = env.camera.intrinsic if env.camera is not None else None
+        T_cam_base = None
+        if hasattr(env, "T_CAM_BASE") and env.T_CAM_BASE and arm in env.T_CAM_BASE:
+            T_cam_base = env.T_CAM_BASE[arm]
 
         for i, pose in enumerate(poses):
             pos = pose["position"]
             R = pose["rotation"]
 
-            px = self.project_world_to_pixel(pos, intrinsic, T_cam_base)
+            px = pixel_from_world_debug(
+                env,
+                config,
+                np.asarray(pos, dtype=float),
+                arm=arm,
+                intrinsic=intrinsic,
+                T_cam_base=T_cam_base,
+            )
 
             if px is None:
                 continue
@@ -45,7 +58,14 @@ class VisualizationService:
             direction = R[:, 0]  # tangent
             tip = np.asarray(pos) + np.asarray(direction) * 0.05
 
-            tip_px = self.project_world_to_pixel(tip, intrinsic, T_cam_base)
+            tip_px = pixel_from_world_debug(
+                env,
+                config,
+                np.asarray(tip, dtype=float),
+                arm=arm,
+                intrinsic=intrinsic,
+                T_cam_base=T_cam_base,
+            )
 
             if tip_px is not None:
                 cv2.arrowedLine(img, (u, v), tip_px, (255, 0, 0), 2)

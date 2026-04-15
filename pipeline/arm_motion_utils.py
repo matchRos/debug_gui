@@ -7,6 +7,13 @@ from scipy.spatial.transform import Rotation as R
 from sensor_msgs.msg import JointState
 from cable_routing.debug_gui.backend.planes import ensure_min_plane_height, get_routing_plane
 
+# Frame for Cartesian targets (matches board / homography in yumi_base_link).
+MOTION_FRAME_ID = "yumi_base_link"
+
+
+def is_dual_arm_grasp(config) -> bool:
+    return bool(getattr(config, "dual_arm_grasp", True))
+
 
 def split_dual_arm_poses(poses):
     """
@@ -32,11 +39,14 @@ def split_dual_arm_poses(poses):
     return left_pose, right_pose
 
 
-def pose_to_msg(position, rotation, frame_id="world"):
+def pose_to_msg(position, rotation, frame_id=None):
     """
     Convert a pose dict entry (position + rotation matrix) into a PoseStamped message.
     rotation must be a 3x3 rotation matrix.
     """
+    if frame_id is None:
+        frame_id = MOTION_FRAME_ID
+
     pos = np.asarray(position, dtype=float).reshape(3)
     rot = np.asarray(rotation, dtype=float).reshape(3, 3)
 
@@ -94,13 +104,15 @@ def publish_dual_arm_targets(
     pub_right,
     left_pose,
     right_pose,
-    frame_id="world",
+    frame_id=None,
 ) -> Tuple[PoseStamped, np.ndarray, PoseStamped, np.ndarray]:
     """
     Publish both arm targets effectively simultaneously.
     Returns:
         left_msg, left_quat, right_msg, right_quat
     """
+    if frame_id is None:
+        frame_id = MOTION_FRAME_ID
     left_msg, left_quat = pose_to_msg(
         left_pose["position"], left_pose["rotation"], frame_id
     )
@@ -171,7 +183,7 @@ def publish_staggered_dual_arm_targets(
     left_pose,
     right_pose,
     delay_s=0.20,
-    frame_id="world",
+    frame_id=None,
 ):
     """
     Publish the two arm targets with a small delay.
@@ -179,6 +191,8 @@ def publish_staggered_dual_arm_targets(
     Returns:
         left_msg, left_quat, right_msg, right_quat, order
     """
+    if frame_id is None:
+        frame_id = MOTION_FRAME_ID
     order = order_poses_for_staggered_motion(left_pose, right_pose)
 
     left_msg, left_quat = pose_to_msg(

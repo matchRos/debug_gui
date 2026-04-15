@@ -10,7 +10,9 @@ from cable_routing.debug_gui.backend.first_route_targets import (
     build_first_route_execution_poses,
 )
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
+    MOTION_FRAME_ID,
     enforce_pose_min_height,
+    is_dual_arm_grasp,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -44,7 +46,7 @@ class ExecuteFirstRouteStep(BaseStep):
         quat = R.from_matrix(rot).as_quat()
         msg = PoseStamped()
         msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = "world"
+        msg.header.frame_id = MOTION_FRAME_ID
         msg.pose.position.x = float(pos[0])
         msg.pose.position.y = float(pos[1])
         msg.pose.position.z = float(pos[2])
@@ -53,6 +55,23 @@ class ExecuteFirstRouteStep(BaseStep):
         msg.pose.orientation.z = float(quat[2])
         msg.pose.orientation.w = float(quat[3])
         return msg
+
+    def _publish_route_pair(
+        self, state: PipelineState, left_msg: PoseStamped, right_msg: PoseStamped
+    ) -> str:
+        """Publish both arms, or only ``current_primary_arm`` when ``dual_arm_grasp`` is False."""
+        if is_dual_arm_grasp(state.config):
+            self.pub_left.publish(left_msg)
+            self.pub_right.publish(right_msg)
+            return "both"
+        primary = getattr(state, "current_primary_arm", None)
+        if primary is None and hasattr(state, "grasp_poses") and state.grasp_poses:
+            primary = state.grasp_poses[0].get("arm", "left")
+        if primary == "right":
+            self.pub_right.publish(right_msg)
+            return "right"
+        self.pub_left.publish(left_msg)
+        return "left"
 
     def run(self, state: PipelineState) -> Dict[str, Any]:
         left_pose, right_pose, mode = build_first_route_execution_poses(state)
@@ -67,8 +86,7 @@ class ExecuteFirstRouteStep(BaseStep):
         left_msg.header.stamp = now
         right_msg.header.stamp = now
 
-        self.pub_left.publish(left_msg)
-        self.pub_right.publish(right_msg)
+        publish_mode = self._publish_route_pair(state, left_msg, right_msg)
 
         wait_until_robot_settled()
 
@@ -90,8 +108,7 @@ class ExecuteFirstRouteStep(BaseStep):
             now2 = rospy.Time.now()
             left_center_msg.header.stamp = now2
             right_center_msg.header.stamp = now2
-            self.pub_left.publish(left_center_msg)
-            self.pub_right.publish(right_center_msg)
+            self._publish_route_pair(state, left_center_msg, right_center_msg)
             wait_until_robot_settled()
             second_phase_executed = True
 
@@ -100,6 +117,7 @@ class ExecuteFirstRouteStep(BaseStep):
         return {
             "executed": True,
             "mode": mode,
+            "publish_mode": publish_mode,
             "second_phase_executed": second_phase_executed,
             "second_phase_mode": second_phase_mode,
             "left_position": [

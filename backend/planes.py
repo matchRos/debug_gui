@@ -69,3 +69,14 @@ def ensure_min_plane_height(
     if signed < float(min_height_above_plane_m):
         return p + (float(min_height_above_plane_m) - signed) * plane.normal
     return p
+
+
+def routing_plane_is_world_yz(plane: RoutingPlane, cos_threshold: float = 0.85) -> bool:
+    """
+    True when the routing plane normal is mostly aligned with world ±X,
+    i.e. the board lies approximately in the world YZ plane at fixed X.
+    """
+    n = np.asarray(plane.normal, dtype=float).reshape(3)
+    n /= np.linalg.norm(n) + 1e-8
+    ex = np.array([1.0, 0.0, 0.0], dtype=float)
+    return float(abs(np.dot(n, ex))) >= float(cos_threshold)

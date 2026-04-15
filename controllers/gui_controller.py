@@ -20,12 +20,43 @@ class GuiController:
         self.window = None
         self.trace_io = CableTraceIO()
         self.tracing_service = TracingService()
+        self._trace_start_mode_override = "auto_from_config"
 
     def set_window(self, window: Any) -> None:
         self.window = window
         self._populate_step_list()
+        self._sync_trace_mode_combo_from_config()
         self._append_log("GUI controller initialized.")
         self._append_log(f"Current step: {self.runner.get_current_step_name()}")
+
+    def _sync_trace_mode_combo_from_config(self) -> None:
+        if self.window is None:
+            return
+        combo = self.window.trace_mode_combo
+        current_mode = self._trace_start_mode_override
+        if self.state.config is not None and hasattr(self.state.config, "trace_start_mode"):
+            current_mode = self.state.config.trace_start_mode
+        idx = combo.findData(current_mode)
+        if idx >= 0:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(idx)
+            combo.blockSignals(False)
+
+    def _apply_trace_mode_to_config_if_ready(self) -> None:
+        if self.state.config is None:
+            return
+        if getattr(self.state.config, "trace_start_mode", None) != self._trace_start_mode_override:
+            self.state.config.trace_start_mode = self._trace_start_mode_override
+
+    def on_trace_start_mode_changed(self, _index: int) -> None:
+        if self.window is None:
+            return
+        mode = self.window.trace_mode_combo.currentData()
+        if mode is None:
+            return
+        self._trace_start_mode_override = str(mode)
+        self._apply_trace_mode_to_config_if_ready()
+        self._append_log(f"Trace start mode set to: {self._trace_start_mode_override}")
 
     def _populate_step_list(self) -> None:
         if self.window is None:
@@ -117,9 +148,11 @@ class GuiController:
         self._refresh_image_view()
 
     def on_next_step(self) -> None:
+        self._apply_trace_mode_to_config_if_ready()
         try:
             step_name, result = self.runner.run_next(self.state)
             self._handle_step_result(step_name, result)
+            self._sync_trace_mode_combo_from_config()
         except Exception as exc:
             self._append_log(f"ERROR while running next step: {exc}")
 
@@ -155,8 +188,10 @@ class GuiController:
         self._append_log(f"Auto-running steps up to '{step_name}'...")
         while self.runner.has_next() and self.runner.current_idx <= target_idx:
             try:
+                self._apply_trace_mode_to_config_if_ready()
                 executed_name, result = self.runner.run_next(self.state)
                 self._handle_step_result(executed_name, result)
+                self._sync_trace_mode_combo_from_config()
             except Exception as exc:
                 self._append_log(
                     f"ERROR during auto-run at step '{self.runner.get_current_step_name()}': {exc}"
@@ -175,8 +210,10 @@ class GuiController:
         step_name = current_item.text()
 
         try:
+            self._apply_trace_mode_to_config_if_ready()
             executed_name, result = self.runner.run_step_by_name(self.state, step_name)
             self._handle_step_result(executed_name, result)
+            self._sync_trace_mode_combo_from_config()
         except Exception as exc:
             self._append_log(f"ERROR while running selected step '{step_name}': {exc}")
 
@@ -192,6 +229,7 @@ class GuiController:
         self._append_log("Pipeline reset.")
         self._append_log(f"Current step: {self.runner.get_current_step_name()}")
         self._update_step_highlight()
+        self._sync_trace_mode_combo_from_config()
 
     def on_save_trace(self) -> None:
         if self.window is None:
