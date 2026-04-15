@@ -6,6 +6,15 @@ from cable_routing.debug_gui.backend.planes import (
 )
 
 
+def _rotation_world_rx_deg(theta_deg: float) -> np.ndarray:
+    """Right-handed rotation about world +X."""
+    t = np.deg2rad(float(theta_deg))
+    c, s = np.cos(t), np.sin(t)
+    return np.array(
+        [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]], dtype=float
+    )
+
+
 class GraspPoseService:
     def compute_pose(
         self,
@@ -13,6 +22,7 @@ class GraspPoseService:
         tangent,
         plane,
         grasp_height_above_plane_m: float,
+        extra_world_rx_deg: float = 0.0,
     ):
         """
         Build a right-handed tool frame in world coordinates.
@@ -40,6 +50,15 @@ class GraspPoseService:
 
         R = np.stack([x_axis, y_axis, z_axis], axis=1)
         approach_axis = -z_axis.copy()
+
+        # YZ board: YuMi MoveIt TCP often expects a different in-plane axis than
+        # (tangent=X, approach=Z). Rotate the whole tool frame about world +X so
+        # approach (column 2) stays along ±world X; only Y/Z components of the
+        # gripper twist change.
+        if routing_plane_is_world_yz(plane) and abs(float(extra_world_rx_deg)) > 1e-6:
+            Rx = _rotation_world_rx_deg(extra_world_rx_deg)
+            R = Rx @ R
+            approach_axis = -R[:, 2].copy()
 
         # Legacy horizontal-table grasp.
         if not routing_plane_is_world_yz(plane):
@@ -76,6 +95,7 @@ class GraspPoseService:
         grasps,
         plane,
         grasp_height_above_plane_m: float,
+        extra_world_rx_deg: float = 0.0,
     ):
         poses = []
 
@@ -85,9 +105,21 @@ class GraspPoseService:
                 g["tangent"],
                 plane,
                 grasp_height_above_plane_m,
+                extra_world_rx_deg=extra_world_rx_deg,
             )
 
             pose["path_index"] = int(g["index"])
+            # Cable direction in the board plane (for overlays); not always R[:,0] after Rx fix.
+            tw = np.asarray(g["tangent"], dtype=float).reshape(3)
+            n = np.asarray(plane.normal, dtype=float).reshape(3)
+            n /= np.linalg.norm(n) + 1e-8
+            tw = tw - float(np.dot(tw, n)) * n
+            ln = np.linalg.norm(tw)
+            if ln < 1e-6:
+                u = np.asarray(plane.u_axis, dtype=float).reshape(3)
+                tw = u - float(np.dot(u, n)) * n
+                ln = np.linalg.norm(tw) + 1e-8
+            pose["tangent_world"] = tw / ln
 
             poses.append(pose)
 

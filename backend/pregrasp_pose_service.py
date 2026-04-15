@@ -10,7 +10,7 @@ class PreGraspPoseService:
         """
         Pre-grasp is the same pose as grasp, retracted along -X only (YuMi board at ~fixed X).
 
-        Y/Z and orientation match the grasp pose; no lateral or vertical offsets.
+        Y/Z and orientation match the grasp pose.
         """
         pregrasp_poses = []
         dx = float(pregrasp_offset_from_grasp_m)

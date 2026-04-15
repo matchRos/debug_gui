@@ -2,12 +2,11 @@ from typing import Dict
 
 import rospy
 from geometry_msgs.msg import PoseStamped
-from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    MOTION_FRAME_ID,
     enforce_pose_min_height,
     is_dual_arm_grasp,
+    pose_to_published_pose_stamped,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -34,24 +33,6 @@ class DescendToGraspStep(BaseStep):
             PoseStamped,
             queue_size=1,
         )
-
-    def _build_msg(self, pos, rot):
-        quat = R.from_matrix(rot).as_quat()
-
-        msg = PoseStamped()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = MOTION_FRAME_ID
-
-        msg.pose.position.x = float(pos[0])
-        msg.pose.position.y = float(pos[1])
-        msg.pose.position.z = float(pos[2])
-
-        msg.pose.orientation.x = float(quat[0])
-        msg.pose.orientation.y = float(quat[1])
-        msg.pose.orientation.z = float(quat[2])
-        msg.pose.orientation.w = float(quat[3])
-
-        return msg, quat
 
     def _split_by_arm(self, poses):
         left_pose = None
@@ -107,9 +88,10 @@ class DescendToGraspStep(BaseStep):
             first_pose = enforce_pose_min_height(first_pose, state, grasp_floor)
             second_pose = enforce_pose_min_height(second_pose, state, grasp_floor)
 
-            first_msg, first_quat = self._build_msg(
-                first_pose["position"], first_pose["rotation"]
+            first_msg, first_quat = pose_to_published_pose_stamped(
+                first_pose["position"], first_pose["rotation"], state.config
             )
+            first_msg.header.stamp = rospy.Time.now()
 
             if first_arm == "left":
                 self.pub_left.publish(first_msg)
@@ -150,9 +132,10 @@ class DescendToGraspStep(BaseStep):
         first_arm = first_pose.get("arm", "right")
         grasp_floor = float(state.config.grasp_height_above_plane_m)
         first_pose = enforce_pose_min_height(first_pose, state, grasp_floor)
-        first_msg, first_quat = self._build_msg(
-            first_pose["position"], first_pose["rotation"]
+        first_msg, first_quat = pose_to_published_pose_stamped(
+            first_pose["position"], first_pose["rotation"], state.config
         )
+        first_msg.header.stamp = rospy.Time.now()
         if first_arm == "left":
             self.pub_left.publish(first_msg)
         else:

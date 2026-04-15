@@ -3,13 +3,12 @@ from typing import Dict
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
-from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.backend.planes import get_routing_plane
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    MOTION_FRAME_ID,
     enforce_pose_min_height,
     is_dual_arm_grasp,
+    pose_to_published_pose_stamped,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -36,24 +35,6 @@ class LiftAfterGraspStep(BaseStep):
             PoseStamped,
             queue_size=1,
         )
-
-    def _build_msg(self, pos, rot):
-        quat = R.from_matrix(rot).as_quat()  # x, y, z, w
-
-        msg = PoseStamped()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = MOTION_FRAME_ID
-
-        msg.pose.position.x = float(pos[0])
-        msg.pose.position.y = float(pos[1])
-        msg.pose.position.z = float(pos[2])
-
-        msg.pose.orientation.x = float(quat[0])
-        msg.pose.orientation.y = float(quat[1])
-        msg.pose.orientation.z = float(quat[2])
-        msg.pose.orientation.w = float(quat[3])
-
-        return msg, quat
 
     def run(self, state: PipelineState) -> Dict[str, object]:
         if not hasattr(state, "grasp_poses"):
@@ -102,8 +83,12 @@ class LiftAfterGraspStep(BaseStep):
                     f"Lift targets too close: distance={dist_xyz:.3f} m < {min_dist_xyz:.3f} m"
                 )
 
-            left_msg, left_quat = self._build_msg(left_pos, left_pose["rotation"])
-            right_msg, right_quat = self._build_msg(right_pos, right_pose["rotation"])
+            left_msg, left_quat = pose_to_published_pose_stamped(
+                left_pos, left_pose["rotation"], state.config
+            )
+            right_msg, right_quat = pose_to_published_pose_stamped(
+                right_pos, right_pose["rotation"], state.config
+            )
 
             now = rospy.Time.now()
             left_msg.header.stamp = now
@@ -150,7 +135,9 @@ class LiftAfterGraspStep(BaseStep):
         only = enforce_pose_min_height(poses[0], state, detangle_floor)
         arm = only.get("arm", "right")
         pos = np.asarray(only["position"], dtype=float).copy() + lift_vec
-        msg, quat = self._build_msg(pos, only["rotation"])
+        msg, quat = pose_to_published_pose_stamped(
+            pos, only["rotation"], state.config
+        )
         msg.header.stamp = rospy.Time.now()
         if arm == "left":
             self.pub_left.publish(msg)

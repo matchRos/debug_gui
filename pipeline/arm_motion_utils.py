@@ -7,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 from sensor_msgs.msg import JointState
 from cable_routing.debug_gui.backend.planes import ensure_min_plane_height, get_routing_plane
 
-# Frame for Cartesian targets (matches board / homography in yumi_base_link).
+# Internal planning frame (homography / board geometry).
 MOTION_FRAME_ID = "yumi_base_link"
 
 
@@ -66,6 +66,65 @@ def pose_to_msg(position, rotation, frame_id=None):
     msg.pose.orientation.w = float(quat[3])
 
     return msg, quat
+
+
+def pose_to_published_pose_stamped(position, rotation, config=None):
+    """
+    Build ``PoseStamped`` in ``MOTION_FRAME_ID``, then optionally express targets in the
+    motion stack frame (see ``publish_cartesian_targets_in_world_frame``).
+
+    By default (``publish_cartesian_targets_use_tf`` False) only a fixed position offset
+    is applied — no tf2 (avoids native crashes). Enable TF only if stable in your setup.
+    """
+    msg, quat = pose_to_msg(position, rotation, frame_id=MOTION_FRAME_ID)
+    if config is None:
+        return msg, quat
+    if not getattr(config, "publish_cartesian_targets_in_world_frame", True):
+        return msg, quat
+    target = getattr(config, "cartesian_targets_world_frame_id", "world")
+
+    if getattr(config, "publish_cartesian_targets_use_tf", False):
+        from cable_routing.debug_gui.pipeline.tf_pose_publish import (
+            transform_pose_stamped_to_frame,
+        )
+
+        out = transform_pose_stamped_to_frame(msg, target)
+        q = out.pose.orientation
+        quat_out = np.array([q.x, q.y, q.z, q.w], dtype=float)
+        return out, quat_out
+
+    off = np.asarray(
+        getattr(
+            config,
+            "cartesian_targets_world_position_offset_m",
+            (0.0, 0.0, 0.1),
+        ),
+        dtype=float,
+    ).reshape(3)
+    out = PoseStamped()
+    out.header.stamp = rospy.Time.now()
+    out.header.frame_id = target
+    p = (
+        np.array(
+            [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z],
+            dtype=float,
+        )
+        + off
+    )
+    out.pose.position.x = float(p[0])
+    out.pose.position.y = float(p[1])
+    out.pose.position.z = float(p[2])
+    out.pose.orientation = msg.pose.orientation
+    quat_out = np.array(
+        [
+            msg.pose.orientation.x,
+            msg.pose.orientation.y,
+            msg.pose.orientation.z,
+            msg.pose.orientation.w,
+        ],
+        dtype=float,
+    )
+    return out, quat_out
 
 
 def compute_pose_distance(pose_a, pose_b):

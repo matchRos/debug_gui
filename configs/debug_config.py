@@ -64,6 +64,7 @@ def _coerce_for_dataclass(name: str, value: Any, fallback: Any) -> Any:
     if name in (
         "single_arm_nominal_tcp_left_m",
         "single_arm_nominal_tcp_right_m",
+        "cartesian_targets_world_position_offset_m",
     ) and isinstance(value, list):
         return tuple(float(x) for x in value)
     if name == "routing_planes" and isinstance(value, dict):
@@ -116,6 +117,8 @@ class DebugConfig:
     trace_anchor_outward_min_delta_px: float = 8.0
     trace_auto_clip_a_p1_offset_px: float = 20.0
     trace_auto_clip_a_p2_offset_px: float = 40.0
+    # Ring radii are 1x, 2x, 3x this step (pixels) for auto_white_rings_from_clip.
+    trace_white_ring_step_px: float = 20.0
     trace_seed_order_descending_from_anchor: bool = True
 
     routing_plane_default_id: str = "main"
@@ -136,7 +139,22 @@ class DebugConfig:
     grasp_min_clearance_from_first_peg_m: float = 0.05
     grasp_second_min_arc_from_first_grasp_m: float = 0.08
 
-    pregrasp_offset_from_grasp_m: float = 0.07
+    pregrasp_offset_from_grasp_m: float = 0.08
+    # Extra rotation R <- Rx(angle)*R for YZ routing plane (YuMi TCP vs cable/tangent frame).
+    # Degrees about world +X; 0 disables. Tweak sign (±90) if the gripper is still twisted.
+    grasp_extra_world_rx_deg: float = 90.0
+    # Poses are computed in yumi_base_link; publish in ``cartesian_targets_world_frame_id``.
+    publish_cartesian_targets_in_world_frame: bool = True
+    cartesian_targets_world_frame_id: str = "world"
+    # If True, use tf2 (can crash in some Python/GUI setups). If False, apply only the
+    # translation below (no tf2 / no native heap issues).
+    publish_cartesian_targets_use_tf: bool = False
+    # Extra offset on publish (usually zero if ``world_from_pixel_z_offset_m`` is used).
+    cartesian_targets_world_position_offset_m: Tuple[float, float, float] = (
+        0.0,
+        0.0,
+        0.0,
+    )
     detangle_offset_from_routing_m: float = 0.03
 
     first_route_primary_extra_along_route_px: float = 60.0
@@ -166,6 +184,8 @@ class DebugConfig:
         "camera_robot_2d_calibration.yaml",
     )
     board_plane_x_m: float = 0.56
+    # Added to Z for every point from ``world_from_pixel_debug`` (homography / pinhole).
+    world_from_pixel_z_offset_m: float = 0.1
 
     dual_arm_grasp: bool = False
     single_arm_nominal_tcp_left_m: Tuple[float, float, float] = (0.35, 0.22, 0.14)

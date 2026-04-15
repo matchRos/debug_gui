@@ -5,6 +5,8 @@ from cable_routing.debug_gui.pipeline.state import PipelineState
 from cable_routing.debug_gui.backend.pregrasp_pose_service import (
     PreGraspPoseService,
 )
+
+
 class PreGraspPoseStep(BaseStep):
     name = "pregrasp_pose"
     description = "Compute pre-grasp poses (same Y/Z as grasp, retracted in -X)."

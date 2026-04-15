@@ -54,8 +54,14 @@ class VisualizationService:
             # draw point
             cv2.circle(img, (u, v), 6, (0, 0, 255), -1)
 
-            # draw direction (x-axis)
-            direction = R[:, 0]  # tangent
+            # Cable direction in plane (stable); after grasp_extra_world_rx_deg, R[:,0]
+            # may not match the drawn tangent.
+            direction = pose.get("tangent_world")
+            if direction is None:
+                direction = R[:, 0]
+            else:
+                direction = np.asarray(direction, dtype=float).reshape(3)
+            direction = direction / (np.linalg.norm(direction) + 1e-8)
             tip = np.asarray(pos) + np.asarray(direction) * 0.05
 
             tip_px = pixel_from_world_debug(

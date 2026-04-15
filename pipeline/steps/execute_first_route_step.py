@@ -3,16 +3,15 @@ from typing import Any, Dict
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
-from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.backend.first_route_targets import (
     build_c_clip_centering_poses,
     build_first_route_execution_poses,
 )
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    MOTION_FRAME_ID,
     enforce_pose_min_height,
     is_dual_arm_grasp,
+    pose_to_published_pose_stamped,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -42,20 +41,6 @@ class ExecuteFirstRouteStep(BaseStep):
             queue_size=1,
         )
 
-    def _build_msg(self, pos: np.ndarray, rot: np.ndarray) -> PoseStamped:
-        quat = R.from_matrix(rot).as_quat()
-        msg = PoseStamped()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = MOTION_FRAME_ID
-        msg.pose.position.x = float(pos[0])
-        msg.pose.position.y = float(pos[1])
-        msg.pose.position.z = float(pos[2])
-        msg.pose.orientation.x = float(quat[0])
-        msg.pose.orientation.y = float(quat[1])
-        msg.pose.orientation.z = float(quat[2])
-        msg.pose.orientation.w = float(quat[3])
-        return msg
-
     def _publish_route_pair(
         self, state: PipelineState, left_msg: PoseStamped, right_msg: PoseStamped
     ) -> str:
@@ -79,8 +64,12 @@ class ExecuteFirstRouteStep(BaseStep):
         left_pose = enforce_pose_min_height(left_pose, state, routing_floor)
         right_pose = enforce_pose_min_height(right_pose, state, routing_floor)
 
-        left_msg = self._build_msg(left_pose["position"], left_pose["rotation"])
-        right_msg = self._build_msg(right_pose["position"], right_pose["rotation"])
+        left_msg, _ = pose_to_published_pose_stamped(
+            left_pose["position"], left_pose["rotation"], state.config
+        )
+        right_msg, _ = pose_to_published_pose_stamped(
+            right_pose["position"], right_pose["rotation"], state.config
+        )
 
         now = rospy.Time.now()
         left_msg.header.stamp = now
@@ -99,11 +88,11 @@ class ExecuteFirstRouteStep(BaseStep):
             left_center = enforce_pose_min_height(left_center, state, routing_floor)
             right_center = enforce_pose_min_height(right_center, state, routing_floor)
 
-            left_center_msg = self._build_msg(
-                left_center["position"], left_center["rotation"]
+            left_center_msg, _ = pose_to_published_pose_stamped(
+                left_center["position"], left_center["rotation"], state.config
             )
-            right_center_msg = self._build_msg(
-                right_center["position"], right_center["rotation"]
+            right_center_msg, _ = pose_to_published_pose_stamped(
+                right_center["position"], right_center["rotation"], state.config
             )
             now2 = rospy.Time.now()
             left_center_msg.header.stamp = now2

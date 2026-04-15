@@ -1,12 +1,10 @@
 from typing import Dict
 import rospy
 from geometry_msgs.msg import PoseStamped
-from scipy.spatial.transform import Rotation as R
-
 
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    MOTION_FRAME_ID,
     is_dual_arm_grasp,
+    pose_to_published_pose_stamped,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
@@ -69,38 +67,29 @@ class RobotMotionStep(BaseStep):
                 )
         else:
             if len(poses) != 1:
-                raise RuntimeError("Single-arm motion requires exactly 1 pregrasp pose.")
+                raise RuntimeError(
+                    "Single-arm motion requires exactly 1 pregrasp pose."
+                )
             only = poses[0]
             arm = only.get("arm", "right")
             left_pose = only if arm == "left" else None
             right_pose = only if arm == "right" else None
             dist_xyz = 0.0
 
-        def build_msg(pos, rot):
-            quat = R.from_matrix(rot).as_quat()  # x, y, z, w
-
-            msg = PoseStamped()
-            msg.header.stamp = rospy.Time.now()
-            msg.header.frame_id = MOTION_FRAME_ID
-
-            msg.pose.position.x = float(pos[0])
-            msg.pose.position.y = float(pos[1])
-            msg.pose.position.z = float(pos[2])
-
-            msg.pose.orientation.x = float(quat[0])
-            msg.pose.orientation.y = float(quat[1])
-            msg.pose.orientation.z = float(quat[2])
-            msg.pose.orientation.w = float(quat[3])
-
-            return msg, quat
-
         if is_dual_arm_grasp(state.config):
-            left_msg, left_quat = build_msg(left_pose["position"], left_pose["rotation"])
-            right_msg, right_quat = build_msg(
-                right_pose["position"], right_pose["rotation"]
+            left_msg, left_quat = pose_to_published_pose_stamped(
+                left_pose["position"], left_pose["rotation"], state.config
+            )
+            right_msg, right_quat = pose_to_published_pose_stamped(
+                right_pose["position"], right_pose["rotation"], state.config
             )
 
             stagger_delay_s = 1.00
+            now = rospy.Time.now()
+            left_msg.header.stamp = now
+            right_msg.header.stamp = now
+            left_msg.pose.position.z += 0.1  # TODO: Temporary hack, fix this later
+            right_msg.pose.position.z += 0.1  # TODO: Temporary hack, fix this later
             self.pub_left.publish(left_msg)
             rospy.sleep(stagger_delay_s)
             self.pub_right.publish(right_msg)
@@ -137,10 +126,15 @@ class RobotMotionStep(BaseStep):
 
         only_pose = left_pose if left_pose is not None else right_pose
         arm = only_pose.get("arm", "right")
-        msg, quat = build_msg(only_pose["position"], only_pose["rotation"])
+        msg, quat = pose_to_published_pose_stamped(
+            only_pose["position"], only_pose["rotation"], state.config
+        )
+        msg.header.stamp = rospy.Time.now()
         if arm == "left":
+            msg.pose.position.z += 0.1  # TODO: Temporary hack, fix this later
             self.pub_left.publish(msg)
         else:
+            msg.pose.position.z += 0.1  # TODO: Temporary hack, fix this later
             self.pub_right.publish(msg)
 
         state.robot_target_sent = True

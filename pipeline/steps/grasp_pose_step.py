@@ -23,10 +23,14 @@ class GraspPoseStep(BaseStep):
 
         plane = get_routing_plane(state.config)
         grasp_height = float(state.config.grasp_height_above_plane_m)
+        extra_rx = float(
+            getattr(state.config, "grasp_extra_world_rx_deg", 0.0),
+        )
         poses = self.service.compute_grasp_poses(
             state.grasps,
             plane=plane,
             grasp_height_above_plane_m=grasp_height,
+            extra_world_rx_deg=extra_rx,
         )
 
         dual = bool(getattr(state.config, "dual_arm_grasp", True))

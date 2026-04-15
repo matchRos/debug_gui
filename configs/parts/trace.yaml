@@ -3,7 +3,10 @@
 trace_start_points: [[100, 100]]
 trace_end_points: null
 
-trace_start_mode: auto_from_config
+# auto_white_rings_from_clip: first routing clip = anchor; whitest pixel on circles
+# radius step, 2*step, 3*step -> three tracer seeds P0,P1,P2 (see tracing_service).
+trace_start_mode: auto_white_rings_from_clip
+trace_white_ring_step_px: 20.0
 
 trace_anchor_max_start_dist_px: 90.0
 trace_candidate_min_route_dot: 0.25

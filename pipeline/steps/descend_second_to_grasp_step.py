@@ -2,12 +2,11 @@ from typing import Dict
 
 import rospy
 from geometry_msgs.msg import PoseStamped
-from scipy.spatial.transform import Rotation as R
 
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
-    MOTION_FRAME_ID,
     enforce_pose_min_height,
     is_dual_arm_grasp,
+    pose_to_published_pose_stamped,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -35,24 +34,6 @@ class DescendSecondToGraspStep(BaseStep):
             queue_size=1,
         )
 
-    def _build_msg(self, pos, rot):
-        quat = R.from_matrix(rot).as_quat()
-
-        msg = PoseStamped()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = MOTION_FRAME_ID
-
-        msg.pose.position.x = float(pos[0])
-        msg.pose.position.y = float(pos[1])
-        msg.pose.position.z = float(pos[2])
-
-        msg.pose.orientation.x = float(quat[0])
-        msg.pose.orientation.y = float(quat[1])
-        msg.pose.orientation.z = float(quat[2])
-        msg.pose.orientation.w = float(quat[3])
-
-        return msg, quat
-
     def run(self, state: PipelineState) -> Dict[str, object]:
         if not is_dual_arm_grasp(state.config):
             return {
@@ -71,7 +52,10 @@ class DescendSecondToGraspStep(BaseStep):
         grasp_floor = float(state.config.grasp_height_above_plane_m)
         second_pose = enforce_pose_min_height(second_pose, state, grasp_floor)
 
-        msg, quat = self._build_msg(second_pose["position"], second_pose["rotation"])
+        msg, quat = pose_to_published_pose_stamped(
+            second_pose["position"], second_pose["rotation"], state.config
+        )
+        msg.header.stamp = rospy.Time.now()
 
         if second_arm == "left":
             self.pub_left.publish(msg)

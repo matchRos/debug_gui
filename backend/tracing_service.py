@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -118,6 +119,66 @@ def snap_to_bright_pixel(image, pt, radius=5):
     return (int(xs[i] + x0), int(ys[i] + y0))
 
 
+def _pixels_on_euclidean_ring(
+    cx: int,
+    cy: int,
+    radius: float,
+    width: int,
+    height: int,
+) -> List[Tuple[int, int]]:
+    """
+    Integer pixels whose distance to (cx, cy) is within 0.5 px of ``radius``.
+    """
+    r = float(radius)
+    rlo, rhi = r - 0.5, r + 0.5
+    ri = int(math.ceil(r + 2))
+    out: List[Tuple[int, int]] = []
+    for dy in range(-ri, ri + 1):
+        for dx in range(-ri, ri + 1):
+            d = math.hypot(dx, dy)
+            if rlo <= d <= rhi:
+                x, y = cx + dx, cy + dy
+                if 0 <= x < width and 0 <= y < height:
+                    out.append((x, y))
+    return out
+
+
+def pick_whitest_pixel_on_ring(
+    image_rgb: np.ndarray,
+    cx: int,
+    cy: int,
+    radius: float,
+) -> Tuple[int, int]:
+    """
+    Among pixels approximately on the circle of radius ``radius`` around (cx, cy),
+    return the brightest (max grayscale) pixel. Ties: smallest (x, then y).
+    """
+    h, w = image_rgb.shape[:2]
+    gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+    pts = _pixels_on_euclidean_ring(cx, cy, radius, w, h)
+
+    if not pts:
+        best_xy: Optional[Tuple[int, int]] = None
+        best_g = -1
+        for k in range(720):
+            ang = 2 * math.pi * k / 720.0
+            x = int(round(cx + radius * math.cos(ang)))
+            y = int(round(cy + radius * math.sin(ang)))
+            if 0 <= x < w and 0 <= y < h:
+                g = int(gray[y, x])
+                if g > best_g:
+                    best_g = g
+                    best_xy = (x, y)
+                elif g == best_g and best_xy is not None:
+                    if (x, y) < best_xy:
+                        best_xy = (x, y)
+        if best_xy is not None:
+            return best_xy
+        return (max(0, min(w - 1, cx)), max(0, min(h - 1, cy)))
+
+    return min(pts, key=lambda p: (-int(gray[p[1], p[0]]), p[0], p[1]))
+
+
 def nearest_bright_pixel_global(
     image_rgb: np.ndarray,
     anchor_xy: Tuple[int, int],
@@ -222,6 +283,7 @@ class TracingService:
         seed_order_descending_from_anchor: bool = True,
         clip_a_p1_offset_px: float = 20.0,
         clip_a_p2_offset_px: float = 40.0,
+        trace_white_ring_step_px: float = 20.0,
     ) -> Dict[str, Any]:
         """
         Execute the legacy CableTracer wrapper if available.
@@ -230,6 +292,7 @@ class TracingService:
             raise RuntimeError("Tracer object is not available.")
 
         tracer_start_points = start_points
+        trace_ring_debug: Optional[Dict[str, Any]] = None
 
         # path, status = tracer.trace(
         #     img=image_rgb,
@@ -344,6 +407,35 @@ class TracingService:
                 anchor_point,
                 "nearest:",
                 nearest,
+            )
+        elif start_mode == "auto_white_rings_from_clip":
+            if anchor_point is None:
+                raise RuntimeError(
+                    "trace_start_mode=auto_white_rings_from_clip requires anchor_point "
+                    "(first routing clip)."
+                )
+            cx, cy = int(anchor_point[0]), int(anchor_point[1])
+            step = float(trace_white_ring_step_px)
+            radii = [step, 2.0 * step, 3.0 * step]
+            pts_xy: List[Tuple[int, int]] = []
+            for rad in radii:
+                pts_xy.append(
+                    pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad))
+                )
+            tracer_start_points = [(int(xy[1]), int(xy[0])) for xy in pts_xy]
+            trace_ring_debug = {
+                "anchor_xy": (cx, cy),
+                "step_px": step,
+                "ring_radii_px": radii,
+                "ring_points_xy": pts_xy,
+            }
+            print(
+                "auto_white_rings_from_clip tracer points (y,x):",
+                tracer_start_points,
+                "anchor xy:",
+                (cx, cy),
+                "step_px:",
+                step,
             )
         else:
             # auto_from_config (default): robustly derive 3 tracer points from config.
@@ -580,10 +672,13 @@ class TracingService:
                 candidate_pool.extend(_build_anchor_white_candidates())
             elif start_mode == "manual_two_clicks":
                 candidate_pool = [tracer_start_points]
+            elif start_mode == "auto_white_rings_from_clip":
+                candidate_pool = [tracer_start_points]
             else:
                 candidate_pool = [tracer_start_points] + _build_auto_candidates()
                 candidate_pool.extend(_build_anchor_white_candidates())
-            candidate_pool = _rank_and_filter_candidates(candidate_pool)
+            if start_mode != "auto_white_rings_from_clip":
+                candidate_pool = _rank_and_filter_candidates(candidate_pool)
 
             print(f"trace candidate pool size: {len(candidate_pool)} (mode={start_mode})")
 
@@ -670,6 +765,7 @@ class TracingService:
             "tracer_start_point_count": len(tracer_start_points)
             if tracer_start_points is not None
             else 0,
+            "trace_ring_debug": trace_ring_debug,
         }
 
     def create_trace_overlay(
@@ -680,6 +776,7 @@ class TracingService:
         path_in_pixels: Optional[np.ndarray] = None,
         tracer_start_points_used: Optional[List[Tuple[int, int]]] = None,
         configured_clip_positions: Optional[List[Tuple[str, int, int]]] = None,
+        white_rings_debug: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         """
         Draw start/end points and traced path onto the image.
@@ -754,6 +851,32 @@ class TracingService:
                     cv2.LINE_AA,
                 )
 
+        # White-ring auto mode: anchor + three concentric circles (step, 2*step, 3*step).
+        if white_rings_debug is not None:
+            ax, ay = white_rings_debug["anchor_xy"]
+            step = float(white_rings_debug["step_px"])
+            for k in (1, 2, 3):
+                rad = int(round(k * step))
+                cv2.circle(overlay, (int(ax), int(ay)), rad, (0, 220, 255), 2)
+            cv2.drawMarker(
+                overlay,
+                (int(ax), int(ay)),
+                (0, 220, 255),
+                markerType=cv2.MARKER_CROSS,
+                markerSize=18,
+                thickness=2,
+            )
+            cv2.putText(
+                overlay,
+                "anchor",
+                (int(ax) + 12, int(ay) - 12),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 220, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
         # Path in yellow
         if path_in_pixels is not None and len(path_in_pixels) > 1:
             pts = np.asarray(path_in_pixels).astype(np.int32)
@@ -767,10 +890,15 @@ class TracingService:
             cv2.circle(overlay, tuple(pts[0]), 6, (255, 255, 255), -1)
             cv2.circle(overlay, tuple(pts[-1]), 6, (255, 255, 255), -1)
 
-        # Actual tracer seed points (P0/P1) in tracer convention (y, x).
+        # Actual tracer seed points (P0/P1[/P2]) in tracer convention (y, x).
         if tracer_start_points_used is not None and len(tracer_start_points_used) >= 2:
             pxy_list = []
-            for idx, pt in enumerate(tracer_start_points_used[:2]):
+            seed_colors = [
+                (255, 0, 255),
+                (255, 165, 0),
+                (0, 200, 255),
+            ]
+            for idx, pt in enumerate(tracer_start_points_used[:3]):
                 arr = np.asarray(pt).reshape(-1)
                 if arr.size < 2:
                     continue
@@ -781,7 +909,7 @@ class TracingService:
                     continue
 
                 pxy_list.append((x, y))
-                color = (255, 0, 255) if idx == 0 else (255, 165, 0)
+                color = seed_colors[idx] if idx < len(seed_colors) else (200, 200, 200)
                 label = f"P{idx}"
                 cv2.circle(overlay, (x, y), 16, color, 3)
                 cv2.circle(overlay, (x, y), 5, color, -1)
@@ -815,6 +943,15 @@ class TracingService:
                     (255, 255, 255),
                     3,
                     tipLength=0.22,
+                )
+            if len(pxy_list) >= 3:
+                cv2.arrowedLine(
+                    overlay,
+                    pxy_list[1],
+                    pxy_list[2],
+                    (220, 220, 255),
+                    2,
+                    tipLength=0.2,
                 )
 
             # Readable seed info panel.

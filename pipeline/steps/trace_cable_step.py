@@ -131,6 +131,9 @@ class TraceCableStep(BaseStep):
             clip_a_p2_offset_px=float(
                 getattr(state.config, "trace_auto_clip_a_p2_offset_px", 40.0)
             ),
+            trace_white_ring_step_px=float(
+                getattr(state.config, "trace_white_ring_step_px", 20.0),
+            ),
         )
 
         path_in_pixels = trace_result["path_in_pixels"]
@@ -145,6 +148,7 @@ class TraceCableStep(BaseStep):
             path_in_pixels=path_in_pixels,
             tracer_start_points_used=tracer_start_points_used,
             configured_clip_positions=configured_clip_positions,
+            white_rings_debug=trace_result.get("trace_ring_debug"),
         )
 
         state.trace_overlay = overlay

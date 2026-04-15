@@ -2,15 +2,16 @@
 Project between image pixels and world frame for the debug GUI.
 
 When ``env.board_yz_calibration`` is set, the board lies in the world YZ plane
-at fixed X (``board_plane_x_m``): homography maps pixel (u,v) -> (Y,Z) in
-``base_link``; the full point is ``[board_plane_x_m, Y, Z]``.
+at fixed X (``board_plane_x_m``): homography maps pixel (u,v) -> (Y,Z); the full
+point is ``[board_plane_x_m, Y, Z + world_from_pixel_z_offset_m]`` when that
+offset is non-zero (align calibration frame with the motion ``world`` frame).
 
 **Consistency with overlays:** The same ``world_from_pixel_debug`` /
 ``pixel_from_world_debug`` pair is used for trace overlays, grasp overlay, and
 clip positions. If the GUI looks correct but the robot misses in space, check:
 (1) ``board_plane_x_m`` matches the physical board, (2) the homography YAML was
-calibrated for the same camera image size / ROI as live frames, (3) ROS poses
-use ``frame_id=yumi_base_link`` (or the same frame as the homography) / your driver.
+calibrated for the same camera image size / ROI as live frames, (3)
+``world_from_pixel_z_offset_m`` matches your base vs world Z shift.
 
 Otherwise fall back to pinhole + ``T_cam_base`` (horizontal table assumption).
 """
@@ -24,6 +25,13 @@ import numpy as np
 from cable_routing.env.ext_camera.utils.img_utils import get_world_coord_from_pixel_coord
 
 
+def _apply_world_z_offset_from_config(p: np.ndarray, config: Any) -> np.ndarray:
+    dz = float(getattr(config, "world_from_pixel_z_offset_m", 0.0))
+    out = np.asarray(p, dtype=float).reshape(3).copy()
+    out[2] += dz
+    return out
+
+
 def world_from_pixel_debug(
     env: Any,
     config: Any,
@@ -33,13 +41,17 @@ def world_from_pixel_debug(
     image_shape: Optional[Tuple[int, int]] = None,
 ) -> np.ndarray:
     """
-    Return world position (3,) in base_link for a pixel (u, v) = (x_img, y_img).
+    Return world position (3,) for a pixel (u, v) = (x_img, y_img).
+
+    ``world_from_pixel_z_offset_m`` (from config) is added to Z after homography
+    or pinhole projection so pixel-derived poses match the motion frame (e.g. world).
     """
     cal = getattr(env, "board_yz_calibration", None)
     if cal is not None:
         u, v = float(pixel_xy[0]), float(pixel_xy[1])
         bx = float(getattr(config, "board_plane_x_m", 0.56))
-        return cal.pixel_to_world(u, v, bx)
+        p = cal.pixel_to_world(u, v, bx)
+        return _apply_world_z_offset_from_config(p, config)
 
     if not hasattr(env, "T_CAM_BASE") or arm not in env.T_CAM_BASE:
         raise RuntimeError(f"T_CAM_BASE missing for arm '{arm}' in pinhole projection mode.")
@@ -66,7 +78,7 @@ def world_from_pixel_debug(
         is_clip=is_clip,
         arm=arm,
     )
-    return np.asarray(w, dtype=float).reshape(3)
+    return _apply_world_z_offset_from_config(np.asarray(w, dtype=float).reshape(3), config)
 
 
 def pixel_from_world_debug(
@@ -82,7 +94,9 @@ def pixel_from_world_debug(
     """
     cal = getattr(env, "board_yz_calibration", None)
     if cal is not None:
-        p = np.asarray(world_xyz, dtype=float).reshape(3)
+        p = np.asarray(world_xyz, dtype=float).reshape(3).copy()
+        dz = float(getattr(config, "world_from_pixel_z_offset_m", 0.0))
+        p[2] -= dz
         y, z = float(p[1]), float(p[2])
         u, v = cal.yz_to_pixel(y, z)
         return int(round(u)), int(round(v))
@@ -96,8 +110,7 @@ def pixel_from_world_debug(
         if not hasattr(env, "T_CAM_BASE") or arm not in env.T_CAM_BASE:
             return None
         T_cam_base = env.T_CAM_BASE[arm]
-    return viz.project_world_to_pixel(
-        np.asarray(world_xyz, dtype=float).reshape(3),
-        intrinsic,
-        T_cam_base,
-    )
+    p = np.asarray(world_xyz, dtype=float).reshape(3).copy()
+    dz = float(getattr(config, "world_from_pixel_z_offset_m", 0.0))
+    p[2] -= dz
+    return viz.project_world_to_pixel(p, intrinsic, T_cam_base)
