@@ -24,7 +24,6 @@ class HomeArmsStep(BaseStep):
         if not resp.success:
             raise RuntimeError(f"/yumi/home_both_arms failed: {resp.message}")
 
-        # open left gripper
         rospy.wait_for_service("/yumi/gripper_l/open", timeout=5.0)
         open_left_srv = rospy.ServiceProxy("/yumi/gripper_l/open", Trigger)
         resp_left = open_left_srv()

@@ -19,7 +19,7 @@ routing_planes:
     v_axis: [0.0, 1.0, 0.0]
 
 routing_height_above_plane_m: 0.025
-grasp_height_above_plane_m: 0.025
+grasp_height_above_plane_m: 0.04
 # Cable lies in YZ; extra Rx (deg) aligns MoveIt TCP with tangent (try -90 if 90 is wrong).
 grasp_extra_world_rx_deg: 90.0
 pregrasp_offset_from_grasp_m: 0.08
@@ -28,11 +28,10 @@ world_from_pixel_z_offset_m: 0.1
 # Publish in this frame (poses already include world_from_pixel_z_offset_m in Z).
 publish_cartesian_targets_in_world_frame: true
 cartesian_targets_world_frame_id: world
-publish_cartesian_targets_use_tf: false
 cartesian_targets_world_position_offset_m: [0.0, 0.0, 0.0]
 detangle_offset_from_routing_m: 0.03
 
 # First grasp: min distance along traced path from peg (routing[0]) in world frame.
-grasp_min_clearance_from_first_peg_m: 0.05
+grasp_min_clearance_from_first_peg_m: 0.08
 # Dual-arm: min arc length (m) along trace from first grasp to second.
 grasp_second_min_arc_from_first_grasp_m: 0.08

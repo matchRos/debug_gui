@@ -4,7 +4,7 @@ from geometry_msgs.msg import PoseStamped
 
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     is_dual_arm_grasp,
-    pose_to_published_pose_stamped,
+    pose_to_msg,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
@@ -77,11 +77,11 @@ class RobotMotionStep(BaseStep):
             dist_xyz = 0.0
 
         if is_dual_arm_grasp(state.config):
-            left_msg, left_quat = pose_to_published_pose_stamped(
-                left_pose["position"], left_pose["rotation"], state.config
+            left_msg, left_quat = pose_to_msg(
+                left_pose["position"], left_pose["rotation"], config=state.config
             )
-            right_msg, right_quat = pose_to_published_pose_stamped(
-                right_pose["position"], right_pose["rotation"], state.config
+            right_msg, right_quat = pose_to_msg(
+                right_pose["position"], right_pose["rotation"], config=state.config
             )
 
             stagger_delay_s = 1.00
@@ -126,8 +126,8 @@ class RobotMotionStep(BaseStep):
 
         only_pose = left_pose if left_pose is not None else right_pose
         arm = only_pose.get("arm", "right")
-        msg, quat = pose_to_published_pose_stamped(
-            only_pose["position"], only_pose["rotation"], state.config
+        msg, quat = pose_to_msg(
+            only_pose["position"], only_pose["rotation"], config=state.config
         )
         msg.header.stamp = rospy.Time.now()
         if arm == "left":

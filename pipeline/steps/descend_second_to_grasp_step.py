@@ -6,7 +6,7 @@ from geometry_msgs.msg import PoseStamped
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     enforce_pose_min_height,
     is_dual_arm_grasp,
-    pose_to_published_pose_stamped,
+    pose_to_msg,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -52,8 +52,8 @@ class DescendSecondToGraspStep(BaseStep):
         grasp_floor = float(state.config.grasp_height_above_plane_m)
         second_pose = enforce_pose_min_height(second_pose, state, grasp_floor)
 
-        msg, quat = pose_to_published_pose_stamped(
-            second_pose["position"], second_pose["rotation"], state.config
+        msg, quat = pose_to_msg(
+            second_pose["position"], second_pose["rotation"], config=state.config
         )
         msg.header.stamp = rospy.Time.now()
 

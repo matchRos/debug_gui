@@ -39,18 +39,75 @@ def split_dual_arm_poses(poses):
     return left_pose, right_pose
 
 
-def pose_to_msg(position, rotation, frame_id=None):
+def pose_to_msg(position, rotation, frame_id=None, config=None):
     """
     Convert a pose dict entry (position + rotation matrix) into a PoseStamped message.
     rotation must be a 3x3 rotation matrix.
-    """
-    if frame_id is None:
-        frame_id = MOTION_FRAME_ID
 
+    If ``config`` is set and ``publish_cartesian_targets_in_world_frame`` is true, the
+    pose is built in ``MOTION_FRAME_ID`` then copied to ``cartesian_targets_world_frame_id``
+    with ``cartesian_targets_world_position_offset_m`` (translation only; no tf2).
+
+    If ``config`` is set and ``publish_cartesian_targets_in_world_frame`` is false, the
+    message stays in ``MOTION_FRAME_ID``.
+
+    If ``config`` is None, ``frame_id`` defaults to ``MOTION_FRAME_ID``.
+    """
     pos = np.asarray(position, dtype=float).reshape(3)
     rot = np.asarray(rotation, dtype=float).reshape(3, 3)
-
     quat = R.from_matrix(rot).as_quat()  # x, y, z, w
+
+    if config is not None:
+        if not getattr(config, "publish_cartesian_targets_in_world_frame", True):
+            frame_id = MOTION_FRAME_ID
+        else:
+            msg = PoseStamped()
+            msg.header.stamp = rospy.Time.now()
+            msg.header.frame_id = MOTION_FRAME_ID
+            msg.pose.position.x = float(pos[0])
+            msg.pose.position.y = float(pos[1])
+            msg.pose.position.z = float(pos[2])
+            msg.pose.orientation.x = float(quat[0])
+            msg.pose.orientation.y = float(quat[1])
+            msg.pose.orientation.z = float(quat[2])
+            msg.pose.orientation.w = float(quat[3])
+
+            target = getattr(config, "cartesian_targets_world_frame_id", "world")
+            off = np.asarray(
+                getattr(
+                    config,
+                    "cartesian_targets_world_position_offset_m",
+                    (0.0, 0.0, 0.0),
+                ),
+                dtype=float,
+            ).reshape(3)
+            out = PoseStamped()
+            out.header.stamp = rospy.Time.now()
+            out.header.frame_id = target
+            p = (
+                np.array(
+                    [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z],
+                    dtype=float,
+                )
+                + off
+            )
+            out.pose.position.x = float(p[0])
+            out.pose.position.y = float(p[1])
+            out.pose.position.z = float(p[2])
+            out.pose.orientation = msg.pose.orientation
+            quat_out = np.array(
+                [
+                    msg.pose.orientation.x,
+                    msg.pose.orientation.y,
+                    msg.pose.orientation.z,
+                    msg.pose.orientation.w,
+                ],
+                dtype=float,
+            )
+            return out, quat_out
+
+    if frame_id is None:
+        frame_id = MOTION_FRAME_ID
 
     msg = PoseStamped()
     msg.header.stamp = rospy.Time.now()
@@ -66,65 +123,6 @@ def pose_to_msg(position, rotation, frame_id=None):
     msg.pose.orientation.w = float(quat[3])
 
     return msg, quat
-
-
-def pose_to_published_pose_stamped(position, rotation, config=None):
-    """
-    Build ``PoseStamped`` in ``MOTION_FRAME_ID``, then optionally express targets in the
-    motion stack frame (see ``publish_cartesian_targets_in_world_frame``).
-
-    By default (``publish_cartesian_targets_use_tf`` False) only a fixed position offset
-    is applied — no tf2 (avoids native crashes). Enable TF only if stable in your setup.
-    """
-    msg, quat = pose_to_msg(position, rotation, frame_id=MOTION_FRAME_ID)
-    if config is None:
-        return msg, quat
-    if not getattr(config, "publish_cartesian_targets_in_world_frame", True):
-        return msg, quat
-    target = getattr(config, "cartesian_targets_world_frame_id", "world")
-
-    if getattr(config, "publish_cartesian_targets_use_tf", False):
-        from cable_routing.debug_gui.pipeline.tf_pose_publish import (
-            transform_pose_stamped_to_frame,
-        )
-
-        out = transform_pose_stamped_to_frame(msg, target)
-        q = out.pose.orientation
-        quat_out = np.array([q.x, q.y, q.z, q.w], dtype=float)
-        return out, quat_out
-
-    off = np.asarray(
-        getattr(
-            config,
-            "cartesian_targets_world_position_offset_m",
-            (0.0, 0.0, 0.1),
-        ),
-        dtype=float,
-    ).reshape(3)
-    out = PoseStamped()
-    out.header.stamp = rospy.Time.now()
-    out.header.frame_id = target
-    p = (
-        np.array(
-            [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z],
-            dtype=float,
-        )
-        + off
-    )
-    out.pose.position.x = float(p[0])
-    out.pose.position.y = float(p[1])
-    out.pose.position.z = float(p[2])
-    out.pose.orientation = msg.pose.orientation
-    quat_out = np.array(
-        [
-            msg.pose.orientation.x,
-            msg.pose.orientation.y,
-            msg.pose.orientation.z,
-            msg.pose.orientation.w,
-        ],
-        dtype=float,
-    )
-    return out, quat_out
 
 
 def compute_pose_distance(pose_a, pose_b):

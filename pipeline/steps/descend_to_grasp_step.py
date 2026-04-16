@@ -6,7 +6,7 @@ from geometry_msgs.msg import PoseStamped
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     enforce_pose_min_height,
     is_dual_arm_grasp,
-    pose_to_published_pose_stamped,
+    pose_to_msg,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -88,8 +88,8 @@ class DescendToGraspStep(BaseStep):
             first_pose = enforce_pose_min_height(first_pose, state, grasp_floor)
             second_pose = enforce_pose_min_height(second_pose, state, grasp_floor)
 
-            first_msg, first_quat = pose_to_published_pose_stamped(
-                first_pose["position"], first_pose["rotation"], state.config
+            first_msg, first_quat = pose_to_msg(
+                first_pose["position"], first_pose["rotation"], config=state.config
             )
             first_msg.header.stamp = rospy.Time.now()
 
@@ -132,8 +132,8 @@ class DescendToGraspStep(BaseStep):
         first_arm = first_pose.get("arm", "right")
         grasp_floor = float(state.config.grasp_height_above_plane_m)
         first_pose = enforce_pose_min_height(first_pose, state, grasp_floor)
-        first_msg, first_quat = pose_to_published_pose_stamped(
-            first_pose["position"], first_pose["rotation"], state.config
+        first_msg, first_quat = pose_to_msg(
+            first_pose["position"], first_pose["rotation"], config=state.config
         )
         first_msg.header.stamp = rospy.Time.now()
         if first_arm == "left":

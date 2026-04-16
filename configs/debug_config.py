@@ -143,12 +143,10 @@ class DebugConfig:
     # Extra rotation R <- Rx(angle)*R for YZ routing plane (YuMi TCP vs cable/tangent frame).
     # Degrees about world +X; 0 disables. Tweak sign (±90) if the gripper is still twisted.
     grasp_extra_world_rx_deg: float = 90.0
-    # Poses are computed in yumi_base_link; publish in ``cartesian_targets_world_frame_id``.
+    # Poses are computed in yumi_base_link; publish in ``cartesian_targets_world_frame_id``
+    # with optional translation offset (no tf2).
     publish_cartesian_targets_in_world_frame: bool = True
     cartesian_targets_world_frame_id: str = "world"
-    # If True, use tf2 (can crash in some Python/GUI setups). If False, apply only the
-    # translation below (no tf2 / no native heap issues).
-    publish_cartesian_targets_use_tf: bool = False
     # Extra offset on publish (usually zero if ``world_from_pixel_z_offset_m`` is used).
     cartesian_targets_world_position_offset_m: Tuple[float, float, float] = (
         0.0,

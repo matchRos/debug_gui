@@ -11,7 +11,7 @@ from cable_routing.debug_gui.backend.first_route_targets import (
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     enforce_pose_min_height,
     is_dual_arm_grasp,
-    pose_to_published_pose_stamped,
+    pose_to_msg,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -64,11 +64,11 @@ class ExecuteFirstRouteStep(BaseStep):
         left_pose = enforce_pose_min_height(left_pose, state, routing_floor)
         right_pose = enforce_pose_min_height(right_pose, state, routing_floor)
 
-        left_msg, _ = pose_to_published_pose_stamped(
-            left_pose["position"], left_pose["rotation"], state.config
+        left_msg, _ = pose_to_msg(
+            left_pose["position"], left_pose["rotation"], config=state.config
         )
-        right_msg, _ = pose_to_published_pose_stamped(
-            right_pose["position"], right_pose["rotation"], state.config
+        right_msg, _ = pose_to_msg(
+            right_pose["position"], right_pose["rotation"], config=state.config
         )
 
         now = rospy.Time.now()
@@ -88,11 +88,11 @@ class ExecuteFirstRouteStep(BaseStep):
             left_center = enforce_pose_min_height(left_center, state, routing_floor)
             right_center = enforce_pose_min_height(right_center, state, routing_floor)
 
-            left_center_msg, _ = pose_to_published_pose_stamped(
-                left_center["position"], left_center["rotation"], state.config
+            left_center_msg, _ = pose_to_msg(
+                left_center["position"], left_center["rotation"], config=state.config
             )
-            right_center_msg, _ = pose_to_published_pose_stamped(
-                right_center["position"], right_center["rotation"], state.config
+            right_center_msg, _ = pose_to_msg(
+                right_center["position"], right_center["rotation"], config=state.config
             )
             now2 = rospy.Time.now()
             left_center_msg.header.stamp = now2

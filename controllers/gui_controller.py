@@ -36,6 +36,9 @@ class GuiController:
         current_mode = self._trace_start_mode_override
         if self.state.config is not None and hasattr(self.state.config, "trace_start_mode"):
             current_mode = self.state.config.trace_start_mode
+        # Keep override aligned with loaded config so _apply_trace_mode_to_config_if_ready
+        # does not overwrite YAML (e.g. auto_white_rings_from_clip) with a stale default.
+        self._trace_start_mode_override = str(current_mode)
         idx = combo.findData(current_mode)
         if idx >= 0:
             combo.blockSignals(True)

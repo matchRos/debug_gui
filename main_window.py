@@ -43,6 +43,9 @@ class MainWindow(QMainWindow):
         self.load_trace_button = QPushButton("Load Cable Trace")
         self.trace_mode_combo = QComboBox()
         self.trace_mode_combo.addItem("Auto from config", "auto_from_config")
+        self.trace_mode_combo.addItem(
+            "Auto white rings (first clip)", "auto_white_rings_from_clip"
+        )
         self.trace_mode_combo.addItem("Auto from clip A", "auto_from_clip_a")
         self.trace_mode_combo.addItem("Manual two clicks", "manual_two_clicks")
 

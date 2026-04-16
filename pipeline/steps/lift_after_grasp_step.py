@@ -8,7 +8,7 @@ from cable_routing.debug_gui.backend.planes import get_routing_plane
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     enforce_pose_min_height,
     is_dual_arm_grasp,
-    pose_to_published_pose_stamped,
+    pose_to_msg,
     wait_until_robot_settled,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
@@ -83,11 +83,11 @@ class LiftAfterGraspStep(BaseStep):
                     f"Lift targets too close: distance={dist_xyz:.3f} m < {min_dist_xyz:.3f} m"
                 )
 
-            left_msg, left_quat = pose_to_published_pose_stamped(
-                left_pos, left_pose["rotation"], state.config
+            left_msg, left_quat = pose_to_msg(
+                left_pos, left_pose["rotation"], config=state.config
             )
-            right_msg, right_quat = pose_to_published_pose_stamped(
-                right_pos, right_pose["rotation"], state.config
+            right_msg, right_quat = pose_to_msg(
+                right_pos, right_pose["rotation"], config=state.config
             )
 
             now = rospy.Time.now()
@@ -135,9 +135,7 @@ class LiftAfterGraspStep(BaseStep):
         only = enforce_pose_min_height(poses[0], state, detangle_floor)
         arm = only.get("arm", "right")
         pos = np.asarray(only["position"], dtype=float).copy() + lift_vec
-        msg, quat = pose_to_published_pose_stamped(
-            pos, only["rotation"], state.config
-        )
+        msg, quat = pose_to_msg(pos, only["rotation"], config=state.config)
         msg.header.stamp = rospy.Time.now()
         if arm == "left":
             self.pub_left.publish(msg)
