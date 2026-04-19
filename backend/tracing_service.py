@@ -99,13 +99,15 @@ def snap_to_bright_pixel(image, pt, radius=5):
     import cv2
     import numpy as np
 
-    x, y = pt
+    x = int(round(float(pt[0])))
+    y = int(round(float(pt[1])))
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-    y0 = max(0, y - radius)
-    y1 = min(gray.shape[0], y + radius + 1)
-    x0 = max(0, x - radius)
-    x1 = min(gray.shape[1], x + radius + 1)
+    r = int(radius)
+    y0 = int(max(0, y - r))
+    y1 = int(min(gray.shape[0], y + r + 1))
+    x0 = int(max(0, x - r))
+    x1 = int(min(gray.shape[1], x + r + 1))
 
     patch = gray[y0:y1, x0:x1]
     ys, xs = np.where(patch > 150)
@@ -318,7 +320,9 @@ class TracingService:
                     "trace_start_mode=auto_from_clip_a requires an anchor_point."
                 )
 
-            nearest = nearest_bright_pixel_global(image_rgb, anchor_point, threshold=150)
+            nearest = nearest_bright_pixel_global(
+                image_rgb, anchor_point, threshold=150
+            )
 
             # Choose direction from anchor using cable-near candidates (same spirit as env_new).
             direction = None
@@ -416,12 +420,10 @@ class TracingService:
                 )
             cx, cy = int(anchor_point[0]), int(anchor_point[1])
             step = float(trace_white_ring_step_px)
-            radii = [step, 2.0 * step, 3.0 * step]
+            radii = [step * 0.5, 1.5 * step, 2.5 * step]
             pts_xy: List[Tuple[int, int]] = []
             for rad in radii:
-                pts_xy.append(
-                    pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad))
-                )
+                pts_xy.append(pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad)))
             tracer_start_points = [(int(xy[1]), int(xy[0])) for xy in pts_xy]
             trace_ring_debug = {
                 "anchor_xy": (cx, cy),
@@ -439,7 +441,9 @@ class TracingService:
             )
         else:
             # auto_from_config (default): robustly derive 3 tracer points from config.
-            cfg_pts = [tuple(np.asarray(p).reshape(-1)[:2].astype(int)) for p in start_points]
+            cfg_pts = [
+                tuple(np.asarray(p).reshape(-1)[:2].astype(int)) for p in start_points
+            ]
             if len(cfg_pts) >= 2:
                 tracer_start_points = build_three_start_points_from_start_and_direction(
                     image_rgb,
@@ -467,7 +471,9 @@ class TracingService:
             Build several (y,x) candidate triplets for robust tracer initialization.
             """
             candidates: List[List[Tuple[int, int]]] = []
-            cfg_pts = [tuple(np.asarray(p).reshape(-1)[:2].astype(int)) for p in start_points]
+            cfg_pts = [
+                tuple(np.asarray(p).reshape(-1)[:2].astype(int)) for p in start_points
+            ]
 
             if len(cfg_pts) >= 2:
                 p0 = cfg_pts[0]
@@ -543,9 +549,14 @@ class TracingService:
                     ok = True
                     for c in clip_points:
                         # Allow points near the anchor clip itself.
-                        if anchor_point is not None and np.linalg.norm(
-                            np.asarray(c, dtype=float) - np.asarray(anchor_point, dtype=float)
-                        ) < 1.0:
+                        if (
+                            anchor_point is not None
+                            and np.linalg.norm(
+                                np.asarray(c, dtype=float)
+                                - np.asarray(anchor_point, dtype=float)
+                            )
+                            < 1.0
+                        ):
                             continue
                         if float(np.linalg.norm(np.asarray(p) - np.asarray(c))) < 20.0:
                             ok = False
@@ -558,7 +569,10 @@ class TracingService:
             # Strongly prefer nearest anchor-adjacent cable pixels first.
             filtered_points.sort(
                 key=lambda p: float(
-                    np.linalg.norm(np.asarray(p, dtype=float) - np.asarray(anchor_point, dtype=float))
+                    np.linalg.norm(
+                        np.asarray(p, dtype=float)
+                        - np.asarray(anchor_point, dtype=float)
+                    )
                 )
             )
 
@@ -680,7 +694,9 @@ class TracingService:
             if start_mode != "auto_white_rings_from_clip":
                 candidate_pool = _rank_and_filter_candidates(candidate_pool)
 
-            print(f"trace candidate pool size: {len(candidate_pool)} (mode={start_mode})")
+            print(
+                f"trace candidate pool size: {len(candidate_pool)} (mode={start_mode})"
+            )
 
             for candidate_idx, candidate in enumerate(candidate_pool):
                 tracer_start_points = candidate
@@ -698,8 +714,12 @@ class TracingService:
                             )
                         # Show candidate in both conventions for easier debugging.
                         if len(tracer_start_points) >= 2:
-                            p0_yx = np.asarray(tracer_start_points[0], dtype=float).reshape(-1)[:2]
-                            p1_yx = np.asarray(tracer_start_points[1], dtype=float).reshape(-1)[:2]
+                            p0_yx = np.asarray(
+                                tracer_start_points[0], dtype=float
+                            ).reshape(-1)[:2]
+                            p1_yx = np.asarray(
+                                tracer_start_points[1], dtype=float
+                            ).reshape(-1)[:2]
                             p0_xy = (int(round(p0_yx[1])), int(round(p0_yx[0])))
                             p1_xy = (int(round(p1_yx[1])), int(round(p1_yx[0])))
                             print(
@@ -741,9 +761,7 @@ class TracingService:
                             f"tracer_start_points[{i}] -> type={type(p)}, shape={arr.shape}, value={p}"
                         )
                     except Exception:
-                        print(
-                            f"tracer_start_points[{i}] -> type={type(p)}, value={p}"
-                        )
+                        print(f"tracer_start_points[{i}] -> type={type(p)}, value={p}")
             print(f"end_points type: {type(end_points)}")
             print(f"end_points value: {end_points}")
             if end_points is not None:
@@ -762,9 +780,9 @@ class TracingService:
             "path_in_pixels": path,
             "trace_status": status,
             "tracer_start_points_used": tracer_start_points,
-            "tracer_start_point_count": len(tracer_start_points)
-            if tracer_start_points is not None
-            else 0,
+            "tracer_start_point_count": (
+                len(tracer_start_points) if tracer_start_points is not None else 0
+            ),
             "trace_ring_debug": trace_ring_debug,
         }
 
