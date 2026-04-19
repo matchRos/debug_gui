@@ -65,6 +65,7 @@ def _coerce_for_dataclass(name: str, value: Any, fallback: Any) -> Any:
         "single_arm_nominal_tcp_left_m",
         "single_arm_nominal_tcp_right_m",
         "cartesian_targets_world_position_offset_m",
+        "handover_goal_world_m",
     ) and isinstance(value, list):
         return tuple(float(x) for x in value)
     if name == "routing_planes" and isinstance(value, dict):
@@ -188,3 +189,15 @@ class DebugConfig:
     dual_arm_grasp: bool = False
     single_arm_nominal_tcp_left_m: Tuple[float, float, float] = (0.35, 0.22, 0.14)
     single_arm_nominal_tcp_right_m: Tuple[float, float, float] = (0.35, -0.22, 0.14)
+
+    # Post-grasp exchange: orient cable toward a clip, then repark (world metres).
+    # handover_arm: None = use descend_first_arm; else "left" / "right".
+    handover_arm: Optional[str] = None
+    handover_clip_routing_index: int = 0
+    handover_goal_world_m: Tuple[float, float, float] = (0.4, 0.0, 0.4)
+    handover_lift_along_normal_m: float = 0.02
+    handover_enforce_min_plane_height: bool = False
+    # Small tool-frame deltas (deg) on top of grasp rotation: R = R_grasp @ Rz @ Ry @ Rx.
+    handover_fine_tool_rx_deg: float = 0.0
+    handover_fine_tool_ry_deg: float = 0.0
+    handover_fine_tool_rz_deg: float = 0.0

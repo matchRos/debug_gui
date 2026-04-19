@@ -31,6 +31,13 @@ cartesian_targets_world_frame_id: world
 cartesian_targets_world_position_offset_m: [0.0, 0.0, 0.0]
 detangle_offset_from_routing_m: 0.03
 
+# Post-grasp handover: two steps — handover_fine_orient (orientation only), handover_move_exchange (position).
+# handover_goal_world_m: [0.4, 0.0, 0.4]
+# Fine-tune a few degrees relative to grasp (tool frame): R = R_grasp @ Rz @ Ry @ Rx
+# handover_fine_tool_rx_deg: 0.0
+# handover_fine_tool_ry_deg: 0.0
+# handover_fine_tool_rz_deg: 0.0
+
 # First grasp: min distance along traced path from peg (routing[0]) in world frame.
 grasp_min_clearance_from_first_peg_m: 0.08
 # Dual-arm: min arc length (m) along trace from first grasp to second.

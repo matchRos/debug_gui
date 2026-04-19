@@ -18,11 +18,6 @@ class HomeArmsStep(BaseStep):
             rospy.init_node("debug_gui_home_arms", anonymous=True, disable_signals=True)
 
     def run(self, state: PipelineState) -> Dict[str, object]:
-        rospy.wait_for_service("/yumi/home_both_arms", timeout=5.0)
-        home_srv = rospy.ServiceProxy("/yumi/home_both_arms", Trigger)
-        resp = home_srv()
-        if not resp.success:
-            raise RuntimeError(f"/yumi/home_both_arms failed: {resp.message}")
 
         rospy.wait_for_service("/yumi/gripper_l/open", timeout=5.0)
         open_left_srv = rospy.ServiceProxy("/yumi/gripper_l/open", Trigger)
@@ -31,6 +26,16 @@ class HomeArmsStep(BaseStep):
         rospy.wait_for_service("/yumi/gripper_r/open", timeout=5.0)
         open_right_srv = rospy.ServiceProxy("/yumi/gripper_r/open", Trigger)
         resp_right = open_right_srv()
+
+        rospy.sleep(
+            1.0
+        )  # Small delay to ensure grippers have time to open before homing arms
+
+        rospy.wait_for_service("/yumi/home_both_arms", timeout=5.0)
+        home_srv = rospy.ServiceProxy("/yumi/home_both_arms", Trigger)
+        resp = home_srv()
+        if not resp.success:
+            raise RuntimeError(f"/yumi/home_both_arms failed: {resp.message}")
 
         if not resp_right.success:
             raise RuntimeError(f"Right gripper open failed: {resp_right.message}")

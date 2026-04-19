@@ -43,6 +43,11 @@ class PipelineState:
 
     # Robot motion
     robot_target_sent: bool = False
+    # Handover: orientation 3x3 world after handover_fine_orient; used by handover_move_exchange.
+    handover_tcp_rotation_world: Optional[np.ndarray] = None
+    handover_fine_orient_done: bool = False
+    handover_exchange_done: bool = False
+    handover_repark_done: bool = False  # True after exchange move (compat. with old name)
 
     # Metadata / logging
     logs: List[str] = field(default_factory=list)
@@ -76,6 +81,11 @@ class PipelineState:
         self.loaded_trace_path = None
 
         self.grasp_preview = None
+
+        self.handover_tcp_rotation_world = None
+        self.handover_fine_orient_done = False
+        self.handover_exchange_done = False
+        self.handover_repark_done = False
 
         self.logs.clear()
         self.finished_steps.clear()
