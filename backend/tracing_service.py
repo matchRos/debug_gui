@@ -420,7 +420,7 @@ class TracingService:
                 )
             cx, cy = int(anchor_point[0]), int(anchor_point[1])
             step = float(trace_white_ring_step_px)
-            radii = [step * 0.5, 1.5 * step, 2.5 * step]
+            radii = [step * 0.3, 1.3 * step, 2.3 * step]
             pts_xy: List[Tuple[int, int]] = []
             for rad in radii:
                 pts_xy.append(pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad)))

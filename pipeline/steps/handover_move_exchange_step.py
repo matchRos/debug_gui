@@ -87,6 +87,8 @@ class HandoverMoveExchangeStep(BaseStep):
         self._publish(arm, msg)
         wait_until_robot_settled()
 
+        state.handover_carrier_tcp_world = np.asarray(pos_goal, dtype=float).reshape(3).copy()
+
         state.handover_repark_done = True
         state.handover_exchange_done = True
 

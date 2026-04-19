@@ -43,6 +43,12 @@ from cable_routing.debug_gui.pipeline.steps.handover_fine_orient_step import (
 from cable_routing.debug_gui.pipeline.steps.handover_move_exchange_step import (
     HandoverMoveExchangeStep,
 )
+from cable_routing.debug_gui.pipeline.steps.present_cable_vertical_step import (
+    PresentCableVerticalStep,
+)
+from cable_routing.debug_gui.pipeline.steps.second_arm_side_approach_step import (
+    SecondArmSideApproachStep,
+)
 from cable_routing.debug_gui.pipeline.unwind_wrists_step import UnwindWristsStep
 from cable_routing.debug_gui.pipeline.steps.descend_second_to_grasp_step import (
     DescendSecondToGraspStep,
@@ -63,7 +69,7 @@ from cable_routing.debug_gui.pipeline.steps.execute_first_route_step import (
 
 def build_runner() -> StepRunner:
     steps = [
-        # HomeArmsStep(),
+        HomeArmsStep(),
         InitEnvironmentStep(),
         PrepareRoutingStep(),
         TraceCableStep(),
@@ -73,15 +79,15 @@ def build_runner() -> StepRunner:
         GraspPoseStep(),
         VisualizeGraspsStep(),
         PreGraspPoseStep(),
-        # RobotMotionStep(),
-        # UnwindWristsStep(),
-        # DescendToGraspStep(),
-        # CloseFirstGripperStep(),
-        # DescendSecondToGraspStep(),
-        # CloseSecondGripperStep(),
-        # LiftAfterGraspStep(),
-        # HandoverFineOrientStep(),
-        # HandoverMoveExchangeStep(),
+        RobotMotionStep(),
+        UnwindWristsStep(),
+        DescendToGraspStep(),
+        CloseFirstGripperStep(),
+        LiftAfterGraspStep(),
+        HandoverFineOrientStep(),
+        HandoverMoveExchangeStep(),
+        PresentCableVerticalStep(),
+        SecondArmSideApproachStep(),
         PlanFirstRouteStep(),
         ExecuteFirstRouteStep(),
     ]

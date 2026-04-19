@@ -88,7 +88,9 @@ def load_debug_config(parts_dir: Optional[Path] = None) -> "DebugConfig":
     for f in fields(DebugConfig):
         name = f.name
         if name in merged:
-            kwargs[name] = _coerce_for_dataclass(name, merged[name], getattr(base, name))
+            kwargs[name] = _coerce_for_dataclass(
+                name, merged[name], getattr(base, name)
+            )
         else:
             kwargs[name] = getattr(base, name)
     return DebugConfig(**kwargs)
@@ -186,7 +188,7 @@ class DebugConfig:
     # Added to Z for every point from ``world_from_pixel_debug`` (homography / pinhole).
     world_from_pixel_z_offset_m: float = 0.1
 
-    dual_arm_grasp: bool = False
+    dual_arm_grasp: bool = True
     single_arm_nominal_tcp_left_m: Tuple[float, float, float] = (0.35, 0.22, 0.14)
     single_arm_nominal_tcp_right_m: Tuple[float, float, float] = (0.35, -0.22, 0.14)
 
@@ -201,3 +203,9 @@ class DebugConfig:
     handover_fine_tool_rx_deg: float = 0.0
     handover_fine_tool_ry_deg: float = 0.0
     handover_fine_tool_rz_deg: float = 0.0
+
+    # Second arm side approach (after present_cable_vertical): same XY as carrier, Z offset (world).
+    # Negative = downward when +Z is up (e.g. -0.1 = 10 cm lower).
+    dual_side_second_arm_delta_z_m: float = -0.1
+    # Applied after base carrier frame: R <- Rx(deg) @ R (world +X). Default +90 for horizontal gripper.
+    present_cable_extra_world_rx_deg: float = 90.0
