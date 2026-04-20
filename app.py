@@ -88,6 +88,7 @@ def build_runner() -> StepRunner:
         HandoverMoveExchangeStep(),
         PresentCableVerticalStep(),
         SecondArmSideApproachStep(),
+        CloseSecondGripperStep(),
         PlanFirstRouteStep(),
         ExecuteFirstRouteStep(),
     ]

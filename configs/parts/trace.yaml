@@ -4,9 +4,14 @@ trace_start_points: [[100, 100]]
 trace_end_points: null
 
 # auto_white_rings_from_clip: first routing clip = anchor; whitest pixel on circles
-# radius step, 2*step, 3*step -> three tracer seeds P0,P1,P2 (see tracing_service).
+# radii k*step, (1+k)*step, (2+k)*step -> three tracer seeds P0,P1,P2 (see tracing_service).
 trace_start_mode: auto_white_rings_from_clip
 trace_white_ring_step_px: 20.0
+trace_white_ring_k_candidates: [0.0, 0.1, 0.3, 0.5, 0.7, 1.0]
+
+# Both must hold: enough samples along the path and meaningful end displacement.
+trace_min_path_points: 150
+trace_min_end_to_start_px: 100.0
 
 trace_anchor_max_start_dist_px: 90.0
 trace_candidate_min_route_dot: 0.25

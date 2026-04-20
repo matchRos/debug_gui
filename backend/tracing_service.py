@@ -8,6 +8,122 @@ import traceback
 from cable_routing.env.ext_camera.utils.img_utils import find_nearest_white_pixel
 
 
+def path_quality_metrics(path_in_pixels: Any) -> Tuple[int, float]:
+    """
+    Returns (num_points, euclidean distance in pixel space between first and last point).
+    """
+    if path_in_pixels is None:
+        return 0, 0.0
+    p = np.asarray(path_in_pixels, dtype=float)
+    if p.size == 0:
+        return 0, 0.0
+    if p.ndim == 1:
+        p = p.reshape(-1, 2)
+    n = int(p.shape[0])
+    if n < 2:
+        return n, 0.0
+    a = p[0].reshape(-1)[:2]
+    b = p[-1].reshape(-1)[:2]
+    dist = float(np.linalg.norm(b - a))
+    return n, dist
+
+
+def path_meets_quality(
+    path_in_pixels: Any,
+    min_path_points: int,
+    min_end_to_start_px: float,
+) -> bool:
+    n, d = path_quality_metrics(path_in_pixels)
+    return n >= int(min_path_points) and d >= float(min_end_to_start_px)
+
+
+def run_white_rings_k_retry(
+    tracer: Any,
+    image_rgb: np.ndarray,
+    anchor_point: Tuple[int, int],
+    step: float,
+    k_candidates: Tuple[float, ...],
+    min_path_points: int,
+    min_end_to_start_px: float,
+    end_points: Optional[List[Tuple[int, int]]],
+    viz: bool,
+) -> Tuple[np.ndarray, Any, List[Tuple[int, int]], Dict[str, Any]]:
+    """
+    For auto_white_rings_from_clip: try ring radii
+    [k*step, (1+k)*step, (2+k)*step] for each k until trace quality passes.
+    """
+    cx, cy = int(anchor_point[0]), int(anchor_point[1])
+    step_f = float(step)
+    last_n = 0
+    last_d = 0.0
+    last_k: Optional[float] = None
+
+    for k in k_candidates:
+        kf = float(k)
+        radii = [kf * step_f, (1.0 + kf) * step_f, (2.0 + kf) * step_f]
+        pts_xy: List[Tuple[int, int]] = []
+        for rad in radii:
+            pts_xy.append(pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad)))
+        tracer_start_points = [(int(xy[1]), int(xy[0])) for xy in pts_xy]
+        trace_ring_debug: Dict[str, Any] = {
+            "anchor_xy": (cx, cy),
+            "step_px": step_f,
+            "white_ring_k": kf,
+            "ring_radii_px": radii,
+            "ring_points_xy": pts_xy,
+        }
+        print(
+            "auto_white_rings_from_clip try k=",
+            kf,
+            "tracer points (y,x):",
+            tracer_start_points,
+            "anchor xy:",
+            (cx, cy),
+            "step_px:",
+            step_f,
+            "radii_px:",
+            radii,
+        )
+        try:
+            result = tracer.trace(
+                img=image_rgb,
+                start_points=tracer_start_points,
+                end_points=end_points,
+                viz=viz,
+            )
+        except Exception as e_try:
+            msg = str(e_try)
+            if "Not enough starting points" in msg:
+                print(f"white_rings k={kf}: {msg} — try next k")
+                continue
+            raise
+
+        if result is None:
+            print(f"white_rings k={kf}: trace returned None — try next k")
+            continue
+
+        path, status = result
+        n_pts, end_dist = path_quality_metrics(path)
+        last_n, last_d, last_k = n_pts, end_dist, kf
+        trace_ring_debug["trace_quality"] = {
+            "n_points": n_pts,
+            "end_to_start_px": end_dist,
+        }
+        ok = path_meets_quality(path, min_path_points, min_end_to_start_px)
+        print(
+            f"white_rings k={kf}: quality n={n_pts} end_dist={end_dist:.1f}px "
+            f"(min n={min_path_points}, min dist={min_end_to_start_px}) "
+            f"-> {'OK' if ok else 'FAIL'}"
+        )
+        if ok:
+            return path, status, tracer_start_points, trace_ring_debug
+
+    raise RuntimeError(
+        "White-ring cable trace did not meet quality after trying k in "
+        f"{list(k_candidates)} (last k={last_k}, n={last_n}, end_dist={last_d:.1f}px)."
+    )
+
+
 def pick_two_points_on_image(image):
     import cv2
 
@@ -286,6 +402,16 @@ class TracingService:
         clip_a_p1_offset_px: float = 20.0,
         clip_a_p2_offset_px: float = 40.0,
         trace_white_ring_step_px: float = 20.0,
+        trace_min_path_points: int = 150,
+        trace_min_end_to_start_px: float = 100.0,
+        trace_white_ring_k_candidates: Tuple[float, ...] = (
+            0.0,
+            0.1,
+            0.3,
+            0.5,
+            0.7,
+            1.0,
+        ),
     ) -> Dict[str, Any]:
         """
         Execute the legacy CableTracer wrapper if available.
@@ -413,32 +539,9 @@ class TracingService:
                 nearest,
             )
         elif start_mode == "auto_white_rings_from_clip":
-            if anchor_point is None:
-                raise RuntimeError(
-                    "trace_start_mode=auto_white_rings_from_clip requires anchor_point "
-                    "(first routing clip)."
-                )
-            cx, cy = int(anchor_point[0]), int(anchor_point[1])
-            step = float(trace_white_ring_step_px)
-            radii = [step * 0.3, 1.3 * step, 2.3 * step]
-            pts_xy: List[Tuple[int, int]] = []
-            for rad in radii:
-                pts_xy.append(pick_whitest_pixel_on_ring(image_rgb, cx, cy, float(rad)))
-            tracer_start_points = [(int(xy[1]), int(xy[0])) for xy in pts_xy]
-            trace_ring_debug = {
-                "anchor_xy": (cx, cy),
-                "step_px": step,
-                "ring_radii_px": radii,
-                "ring_points_xy": pts_xy,
-            }
-            print(
-                "auto_white_rings_from_clip tracer points (y,x):",
-                tracer_start_points,
-                "anchor xy:",
-                (cx, cy),
-                "step_px:",
-                step,
-            )
+            # Seeds and trace are resolved inside try via k-retry + quality check.
+            tracer_start_points = None
+            trace_ring_debug = None
         else:
             # auto_from_config (default): robustly derive 3 tracer points from config.
             cfg_pts = [
@@ -678,73 +781,107 @@ class TracingService:
             return [c for _, c in scored]
 
         try:
-            result = None
-            last_exc: Optional[Exception] = None
-            if start_mode == "auto_from_clip_a":
-                # Keep this mode strictly clip-anchored to avoid unrelated config fallbacks.
-                candidate_pool = [tracer_start_points]
-                candidate_pool.extend(_build_anchor_white_candidates())
-            elif start_mode == "manual_two_clicks":
-                candidate_pool = [tracer_start_points]
-            elif start_mode == "auto_white_rings_from_clip":
-                candidate_pool = [tracer_start_points]
-            else:
-                candidate_pool = [tracer_start_points] + _build_auto_candidates()
-                candidate_pool.extend(_build_anchor_white_candidates())
-            if start_mode != "auto_white_rings_from_clip":
-                candidate_pool = _rank_and_filter_candidates(candidate_pool)
-
-            print(
-                f"trace candidate pool size: {len(candidate_pool)} (mode={start_mode})"
-            )
-
-            for candidate_idx, candidate in enumerate(candidate_pool):
-                tracer_start_points = candidate
-                try:
-                    result = tracer.trace(
-                        img=image_rgb,
-                        start_points=tracer_start_points,
+            if start_mode == "auto_white_rings_from_clip":
+                if anchor_point is None:
+                    raise RuntimeError(
+                        "trace_start_mode=auto_white_rings_from_clip requires anchor_point "
+                        "(first routing clip)."
+                    )
+                path, status, tracer_start_points, trace_ring_debug = (
+                    run_white_rings_k_retry(
+                        tracer=tracer,
+                        image_rgb=image_rgb,
+                        anchor_point=(
+                            int(anchor_point[0]),
+                            int(anchor_point[1]),
+                        ),
+                        step=float(trace_white_ring_step_px),
+                        k_candidates=tuple(float(x) for x in trace_white_ring_k_candidates),
+                        min_path_points=int(trace_min_path_points),
+                        min_end_to_start_px=float(trace_min_end_to_start_px),
                         end_points=end_points,
                         viz=viz,
                     )
-                    if result is not None:
-                        if candidate_idx > 0:
-                            print(
-                                f"trace succeeded with fallback candidate #{candidate_idx}: {tracer_start_points}"
-                            )
-                        # Show candidate in both conventions for easier debugging.
-                        if len(tracer_start_points) >= 2:
-                            p0_yx = np.asarray(
-                                tracer_start_points[0], dtype=float
-                            ).reshape(-1)[:2]
-                            p1_yx = np.asarray(
-                                tracer_start_points[1], dtype=float
-                            ).reshape(-1)[:2]
-                            p0_xy = (int(round(p0_yx[1])), int(round(p0_yx[0])))
-                            p1_xy = (int(round(p1_yx[1])), int(round(p1_yx[0])))
-                            print(
-                                "selected trace candidate p0/p1: "
-                                f"yx={tracer_start_points[0]},{tracer_start_points[1]} "
-                                f"xy={p0_xy},{p1_xy}"
-                            )
-                        break
-                except Exception as e_try:
-                    msg = str(e_try)
-                    # Retry only for the known sparse-start condition.
-                    if "Not enough starting points" in msg:
-                        last_exc = e_try
-                        continue
-                    raise
+                )
+            else:
+                result = None
+                last_exc: Optional[Exception] = None
+                if start_mode == "auto_from_clip_a":
+                    # Keep this mode strictly clip-anchored to avoid unrelated fallbacks.
+                    candidate_pool = [tracer_start_points]
+                    candidate_pool.extend(_build_anchor_white_candidates())
+                elif start_mode == "manual_two_clicks":
+                    candidate_pool = [tracer_start_points]
+                else:
+                    candidate_pool = [tracer_start_points] + _build_auto_candidates()
+                    candidate_pool.extend(_build_anchor_white_candidates())
+                candidate_pool = _rank_and_filter_candidates(candidate_pool)
 
-            if result is None and last_exc is not None:
-                raise last_exc
-
-            if result is None:
-                raise RuntimeError(
-                    f"Tracing failed. The start point is likely not on the cable or the analytic tracer could not initialize from start_points={start_points}."
+                print(
+                    f"trace candidate pool size: {len(candidate_pool)} (mode={start_mode})"
                 )
 
-            path, status = result
+                for candidate_idx, candidate in enumerate(candidate_pool):
+                    tracer_start_points = candidate
+                    try:
+                        result = tracer.trace(
+                            img=image_rgb,
+                            start_points=tracer_start_points,
+                            end_points=end_points,
+                            viz=viz,
+                        )
+                        if result is not None:
+                            if candidate_idx > 0:
+                                print(
+                                    "trace succeeded with fallback candidate "
+                                    f"#{candidate_idx}: {tracer_start_points}"
+                                )
+                            # Show candidate in both conventions for easier debugging.
+                            if len(tracer_start_points) >= 2:
+                                p0_yx = np.asarray(
+                                    tracer_start_points[0], dtype=float
+                                ).reshape(-1)[:2]
+                                p1_yx = np.asarray(
+                                    tracer_start_points[1], dtype=float
+                                ).reshape(-1)[:2]
+                                p0_xy = (int(round(p0_yx[1])), int(round(p0_yx[0])))
+                                p1_xy = (int(round(p1_yx[1])), int(round(p1_yx[0])))
+                                print(
+                                    "selected trace candidate p0/p1: "
+                                    f"yx={tracer_start_points[0]},{tracer_start_points[1]} "
+                                    f"xy={p0_xy},{p1_xy}"
+                                )
+                            break
+                    except Exception as e_try:
+                        msg = str(e_try)
+                        # Retry only for the known sparse-start condition.
+                        if "Not enough starting points" in msg:
+                            last_exc = e_try
+                            continue
+                        raise
+
+                if result is None and last_exc is not None:
+                    raise last_exc
+
+                if result is None:
+                    raise RuntimeError(
+                        "Tracing failed. The start point is likely not on the cable or "
+                        f"the analytic tracer could not initialize from start_points={start_points}."
+                    )
+
+                path, status = result
+                n_pts, end_dist = path_quality_metrics(path)
+                if not path_meets_quality(
+                    path,
+                    int(trace_min_path_points),
+                    float(trace_min_end_to_start_px),
+                ):
+                    raise RuntimeError(
+                        "Trace quality check failed: "
+                        f"points={n_pts} (min {int(trace_min_path_points)}), "
+                        f"end-start distance={end_dist:.1f}px "
+                        f"(min {float(trace_min_end_to_start_px)})."
+                    )
         except Exception as e:
             print("\n=== TRACE ERROR ===")
             print(f"type: {type(e).__name__}")

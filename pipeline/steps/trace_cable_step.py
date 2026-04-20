@@ -134,6 +134,20 @@ class TraceCableStep(BaseStep):
             trace_white_ring_step_px=float(
                 getattr(state.config, "trace_white_ring_step_px", 20.0),
             ),
+            trace_min_path_points=int(
+                getattr(state.config, "trace_min_path_points", 150),
+            ),
+            trace_min_end_to_start_px=float(
+                getattr(state.config, "trace_min_end_to_start_px", 100.0),
+            ),
+            trace_white_ring_k_candidates=tuple(
+                float(x)
+                for x in getattr(
+                    state.config,
+                    "trace_white_ring_k_candidates",
+                    (0.0, 0.1, 0.3, 0.5, 0.7, 1.0),
+                )
+            ),
         )
 
         path_in_pixels = trace_result["path_in_pixels"]

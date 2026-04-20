@@ -72,6 +72,8 @@ def _coerce_for_dataclass(name: str, value: Any, fallback: Any) -> Any:
         return {str(k): dict(v) for k, v in value.items()}
     if name == "clip_plane_assignments" and isinstance(value, dict):
         return {int(k): str(v) for k, v in value.items()}
+    if name == "trace_white_ring_k_candidates" and isinstance(value, list):
+        return tuple(float(x) for x in value)
     return value
 
 
@@ -120,8 +122,19 @@ class DebugConfig:
     trace_anchor_outward_min_delta_px: float = 8.0
     trace_auto_clip_a_p1_offset_px: float = 20.0
     trace_auto_clip_a_p2_offset_px: float = 40.0
-    # Ring radii are 1x, 2x, 3x this step (pixels) for auto_white_rings_from_clip.
+    # Ring radii are k*step, (1+k)*step, (2+k)*step for auto_white_rings_from_clip.
     trace_white_ring_step_px: float = 20.0
+    trace_white_ring_k_candidates: Tuple[float, ...] = (
+        0.0,
+        0.1,
+        0.3,
+        0.5,
+        0.7,
+        1.0,
+    )
+    # Reject traces that look like the wrong object (too short / start≈end).
+    trace_min_path_points: int = 150
+    trace_min_end_to_start_px: float = 100.0
     trace_seed_order_descending_from_anchor: bool = True
 
     routing_plane_default_id: str = "main"
@@ -209,3 +222,8 @@ class DebugConfig:
     dual_side_second_arm_delta_z_m: float = -0.1
     # Applied after base carrier frame: R <- Rx(deg) @ R (world +X). Default +90 for horizontal gripper.
     present_cable_extra_world_rx_deg: float = 90.0
+    # Second-arm base side frame, then R <- Ry(deg) @ R (world +Y). Tune if gripper is vertical vs horizontal.
+    second_arm_extra_world_ry_deg: float = 90.0
+    # Fast moveit prepose: lateral offset along world Y (m, positive magnitude). Right second arm: -offset; left: +offset.
+    dual_side_second_arm_prepose_offset_y_m: float = 0.08
+    dual_side_second_arm_prepose_pause_s: float = 0.5

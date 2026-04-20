@@ -43,6 +43,13 @@ def rotation_carrier_cable_vertical_world(plane: RoutingPlane) -> np.ndarray:
     return np.stack([x_axis, y_axis, z_axis], axis=1)
 
 
+def rotation_world_ry_deg(theta_deg: float) -> np.ndarray:
+    """Right-handed rotation about world +Y (radians internally)."""
+    t = np.deg2rad(float(theta_deg))
+    c, s = np.cos(t), np.sin(t)
+    return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]], dtype=float)
+
+
 def rotation_second_arm_side_grasp_world(second_arm_is_right: bool) -> np.ndarray:
     """
     Side approach: tool Z along **+world Y** (right second arm) or **-world Y** (left),
