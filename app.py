@@ -83,7 +83,7 @@ def build_runner() -> StepRunner:
         UnwindWristsStep(),
         DescendToGraspStep(),
         CloseFirstGripperStep(),
-        LiftAfterGraspStep(),
+        # LiftAfterGraspStep(),
         HandoverFineOrientStep(),
         HandoverMoveExchangeStep(),
         PresentCableVerticalStep(),

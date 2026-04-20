@@ -133,7 +133,7 @@ class DebugConfig:
         1.0,
     )
     # Reject traces that look like the wrong object (too short / start≈end).
-    trace_min_path_points: int = 150
+    trace_min_path_points: int = 40
     trace_min_end_to_start_px: float = 100.0
     trace_seed_order_descending_from_anchor: bool = True
 
@@ -201,7 +201,7 @@ class DebugConfig:
     # Added to Z for every point from ``world_from_pixel_debug`` (homography / pinhole).
     world_from_pixel_z_offset_m: float = 0.1
 
-    dual_arm_grasp: bool = True
+    dual_arm_grasp: bool = False
     single_arm_nominal_tcp_left_m: Tuple[float, float, float] = (0.35, 0.22, 0.14)
     single_arm_nominal_tcp_right_m: Tuple[float, float, float] = (0.35, -0.22, 0.14)
 

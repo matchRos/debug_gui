@@ -19,6 +19,8 @@ board_calibration_yaml: debug_gui/configs/cameras/camera_robot_2d_calibration.ya
 # World X of board plane (m). Must match calibration / physical setup.
 board_plane_x_m: 0.56
 
-dual_arm_grasp: False
+# False = single-arm grasp/descend only; second gripper steps stay skipped.
+# True = sequential dual-arm descend + close_second_gripper / lift_after_grasp etc.
+dual_arm_grasp: false
 single_arm_nominal_tcp_left_m: [0.35, 0.22, 0.14]
 single_arm_nominal_tcp_right_m: [0.35, -0.22, 0.14]
