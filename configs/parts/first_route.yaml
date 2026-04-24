@@ -12,3 +12,5 @@ c_clip_center_primary_lateral_px: 20.0
 c_clip_center_secondary_lateral_px: 45.0
 c_clip_center_primary_forward_px: 5.0
 c_clip_center_secondary_forward_px: -10.0
+
+dual_side_second_arm_slow_approach_extra_y_m: 0.01

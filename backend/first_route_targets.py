@@ -17,10 +17,7 @@ from cable_routing.debug_gui.backend.planes import (
     ensure_min_plane_height,
     get_routing_plane,
 )
-from cable_routing.debug_gui.motion_primitives.c_clip import (
-    build_c_clip_center_pixels,
-    build_c_clip_entry_pixels,
-)
+from cable_routing.debug_gui.motion_primitives.c_clip import build_c_clip_center_pixels
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     is_dual_arm_grasp,
     validate_min_distance,
@@ -83,6 +80,16 @@ def _move_pixel_along_route(primary_px: np.ndarray, state: Any) -> np.ndarray:
     return primary_px + direction * extra_px
 
 
+def _route_height_for_state(state: Any) -> float:
+    return float(
+        getattr(
+            state,
+            "first_route_route_height_m",
+            float(state.config.routing_height_above_plane_m),
+        )
+    )
+
+
 def build_first_route_execution_poses(
     state: Any,
     min_dist_xyz: float = 0.08,
@@ -118,10 +125,12 @@ def build_first_route_execution_poses(
     curr_clip = state.clips[curr_idx]
     clip_type = int(curr_clip.clip_type)
     plane = get_routing_plane(state.config, clip_id=curr_idx)
-    routing_height = float(state.config.routing_height_above_plane_m)
+    routing_height = _route_height_for_state(state)
+    mode = getattr(state, "first_route_mode", None)
 
     primary_px = np.asarray(state.first_route_target_px, dtype=float).reshape(2)
-    primary_px = _move_pixel_along_route(primary_px, state)
+    if mode not in {"c_clip_entry", "u_clip_entry"}:
+        primary_px = _move_pixel_along_route(primary_px, state)
     primary_pos = _pixel_to_world_clip(primary_px, state, primary_arm)
     primary_pos = ensure_min_plane_height(primary_pos, plane, routing_height)
     primary_rot = _grasp_pose_for_arm_or_fallback(state, primary_arm)["rotation"]
@@ -145,34 +154,6 @@ def build_first_route_execution_poses(
             validate_min_distance(left, right, min_dist_xyz, label="First route (peg)")
         return left, right, "peg_hold"
 
-    if clip_type == CLIP_TYPE_C_CLIP:
-        primary_px_c, secondary_px_c = build_c_clip_entry_pixels(
-            curr_clip=curr_clip,
-            primary_arm=primary_arm,
-            config=state.config,
-        )
-        primary_pos_c = _pixel_to_world_clip(primary_px_c, state, primary_arm)
-        primary_pos_c = ensure_min_plane_height(primary_pos_c, plane, routing_height)
-        secondary_pos_c = _pixel_to_world_clip(secondary_px_c, state, secondary_arm)
-        secondary_pos_c = ensure_min_plane_height(secondary_pos_c, plane, routing_height)
-
-        primary_c_pose = {
-            "position": primary_pos_c,
-            "rotation": np.asarray(primary_rot),
-        }
-        secondary_c_pose = {
-            "position": secondary_pos_c,
-            "rotation": np.asarray(secondary_pose["rotation"]),
-        }
-
-        if primary_arm == "left":
-            left, right = primary_c_pose, secondary_c_pose
-        else:
-            left, right = secondary_c_pose, primary_c_pose
-        if is_dual_arm_grasp(state.config):
-            validate_min_distance(left, right, min_dist_xyz, label="First route (c_clip)")
-        return left, right, "c_clip_entry"
-
     if not getattr(state, "first_route_secondary_shown", False):
         raise RuntimeError(
             "first_route_secondary_shown is False but clip is not a peg; "
@@ -194,8 +175,8 @@ def build_first_route_execution_poses(
         left, right = secondary_target, primary_pose
 
     if is_dual_arm_grasp(state.config):
-        validate_min_distance(left, right, min_dist_xyz, label="First route (dual)")
-    return left, right, "dual_slide"
+        validate_min_distance(left, right, min_dist_xyz, label=f"First route ({mode or 'dual'})")
+    return left, right, mode or "dual_slide"
 
 
 def build_c_clip_centering_poses(
@@ -225,7 +206,7 @@ def build_c_clip_centering_poses(
         raise RuntimeError("Centering phase is only valid for C-clip.")
 
     plane = get_routing_plane(state.config, clip_id=curr_idx)
-    routing_height = float(state.config.routing_height_above_plane_m)
+    routing_height = _route_height_for_state(state)
 
     primary_px, secondary_px = build_c_clip_center_pixels(
         curr_clip=curr_clip,

@@ -3,7 +3,6 @@ from typing import Dict
 import rospy
 from std_srvs.srv import Trigger
 
-from cable_routing.debug_gui.backend.handover_pose_service import resolve_handover_arm
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
 
@@ -19,28 +18,9 @@ class CloseSecondGripperStep(BaseStep):
             rospy.init_node("debug_gui_close_second_gripper", anonymous=True)
 
     def run(self, state: PipelineState) -> Dict[str, object]:
-        dual = bool(getattr(state.config, "dual_arm_grasp", True))
-        side_done = bool(getattr(state, "second_arm_side_approach_done", False))
-        # Dual sequential grasp sets descend_second_arm; side-approach path does not.
-        if not dual and not side_done:
-            return {
-                "gripper_closed": False,
-                "skipped": True,
-                "reason": "dual_arm_grasp disabled (and no second_arm_side_approach_done)",
-            }
-
-        second_arm = getattr(state, "descend_second_arm", None)
-        if second_arm is None and side_done:
-            carrier = resolve_handover_arm(
-                state, getattr(state.config, "handover_arm", None)
-            )
-            second_arm = "right" if carrier == "left" else "left"
+        second_arm = state.descend_second_arm
         if second_arm is None:
-            return {
-                "gripper_closed": False,
-                "skipped": True,
-                "reason": "no second arm (descend_second_arm unset and no side approach)",
-            }
+            raise RuntimeError("No second arm stored in state.")
 
         if second_arm == "left":
             service_name = "/yumi/gripper_l/close"

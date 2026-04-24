@@ -43,6 +43,8 @@ class PipelineState:
 
     # Robot motion
     robot_target_sent: bool = False
+    descend_first_arm: Optional[str] = None
+    descend_second_arm: Optional[str] = None
     # Handover: orientation 3x3 world after handover_fine_orient; used by handover_move_exchange.
     handover_tcp_rotation_world: Optional[np.ndarray] = None
     # TCP world position (3,) after handover_move_exchange — used by dual-arm presentation steps.
@@ -88,6 +90,8 @@ class PipelineState:
 
         self.handover_tcp_rotation_world = None
         self.handover_carrier_tcp_world = None
+        self.descend_first_arm = None
+        self.descend_second_arm = None
         self.handover_fine_orient_done = False
         self.handover_exchange_done = False
         self.handover_repark_done = False

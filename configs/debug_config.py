@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional, Tuple
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 _PARTS_DIR = Path(__file__).resolve().parent / "parts"
 _PART_FILES = ("core.yaml", "routing_plane.yaml", "trace.yaml", "first_route.yaml")
+_CLIP_TYPE_CONFIG_DIR = Path(__file__).resolve().parent / "clip_types"
 
 
 def _load_yaml_merged(parts_dir: Path) -> Dict[str, Any]:
@@ -227,3 +228,6 @@ class DebugConfig:
     # Fast moveit prepose: lateral offset along world Y (m, positive magnitude). Right second arm: -offset; left: +offset.
     dual_side_second_arm_prepose_offset_y_m: float = 0.08
     dual_side_second_arm_prepose_pause_s: float = 0.5
+    dual_side_second_arm_slow_approach_extra_y_m: float = 0.01
+
+    clip_type_config_dir: str = str(_CLIP_TYPE_CONFIG_DIR)

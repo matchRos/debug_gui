@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+import traceback
 
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import Qt
@@ -157,6 +158,7 @@ class GuiController:
             self._handle_step_result(step_name, result)
             self._sync_trace_mode_combo_from_config()
         except Exception as exc:
+            traceback.print_exc()
             self._append_log(f"ERROR while running next step: {exc}")
 
     def on_auto_run_to_selected(self) -> None:
@@ -196,6 +198,7 @@ class GuiController:
                 self._handle_step_result(executed_name, result)
                 self._sync_trace_mode_combo_from_config()
             except Exception as exc:
+                traceback.print_exc()
                 self._append_log(
                     f"ERROR during auto-run at step '{self.runner.get_current_step_name()}': {exc}"
                 )
@@ -218,6 +221,7 @@ class GuiController:
             self._handle_step_result(executed_name, result)
             self._sync_trace_mode_combo_from_config()
         except Exception as exc:
+            traceback.print_exc()
             self._append_log(f"ERROR while running selected step '{step_name}': {exc}")
 
     def on_reset(self) -> None:

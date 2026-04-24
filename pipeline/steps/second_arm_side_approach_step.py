@@ -91,6 +91,12 @@ class SecondArmSideApproachStep(BaseStep):
         dz = float(getattr(state.config, "dual_side_second_arm_delta_z_m", -0.1))
         pos_final = pos_c + np.array([0.0, 0.0, dz], dtype=float)
 
+        # add a small offset in y so we increase the chance of catching the cable
+        if second == "right":
+            pos_final += np.array([0.0, 0.02, 0.0], dtype=float)
+        else:
+            pos_final += np.array([0.0, -0.02, 0.0], dtype=float)
+
         lateral = float(
             getattr(state.config, "dual_side_second_arm_prepose_offset_y_m", 0.08)
         )
@@ -122,6 +128,7 @@ class SecondArmSideApproachStep(BaseStep):
         self._publish_slow(second, msg_fin)
         wait_until_robot_settled()
 
+        state.descend_second_arm = second
         state.second_arm_side_approach_done = True
 
         return {
