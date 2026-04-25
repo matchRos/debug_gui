@@ -34,5 +34,6 @@ class ActionStep(BaseStep):
         outputs = dict(result.outputs)
         outputs["action_status"] = result.status.value
         outputs["action_duration_s"] = result.duration_s
+        outputs["action_message"] = result.message
+        outputs["action_error_type"] = result.error_type
         return outputs
-

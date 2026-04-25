@@ -66,9 +66,7 @@ class GuiController:
         if self.window is None:
             return
 
-        self.window.step_list.clear()
-        for step_name in self.runner.get_step_names():
-            self.window.step_list.addItem(step_name)
+        self.window.populate_step_table(self.runner.get_step_names())
 
     def _append_log(self, message: str) -> None:
         self.state.log(message)
@@ -96,12 +94,36 @@ class GuiController:
         if self.window is None:
             return
 
-        current_name = self.runner.get_current_step_name()
-        for i in range(self.window.step_list.count()):
-            item = self.window.step_list.item(i)
-            if item.text() == current_name:
-                self.window.step_list.setCurrentItem(item)
-                return
+        self.window.set_current_step(self.runner.get_current_step_name())
+
+    def _classify_step_result(
+        self,
+        step_name: str,
+        result: Optional[Dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+    ) -> tuple[str, str]:
+        if error_message:
+            return f"error: {error_message}", "#f6c7c7"
+
+        result = result or {}
+        action_status = str(result.get("action_status", "")).lower()
+        action_message = str(result.get("action_message", "")).strip()
+
+        warning_keys = ("warning", "warnings", "skipped", "retry", "fallback")
+        has_warning = any(key in result for key in warning_keys)
+        warning_text = ""
+        for key in warning_keys:
+            if key in result and result[key]:
+                warning_text = str(result[key])
+                break
+
+        if action_status == "succeeded" and has_warning:
+            return f"warning: {warning_text or action_message or 'completed with warning'}", "#ffd8a8"
+        if action_status == "succeeded":
+            return action_message or "succeeded", "#cfeec2"
+        if action_status == "failed":
+            return f"error: {action_message or 'failed'}", "#f6c7c7"
+        return "succeeded", "#cfeec2"
 
     def _numpy_to_pixmap(self, image) -> Optional[QPixmap]:
         if image is None:
@@ -159,6 +181,11 @@ class GuiController:
     def _handle_step_result(self, step_name: str, result: Dict[str, Any]) -> None:
         self._append_log(f"Finished step: {step_name}")
         self._append_latest_action_result()
+        if self.window is not None:
+            status_text, status_color = self._classify_step_result(
+                step_name, result=result
+            )
+            self.window.set_step_result(step_name, status_text, status_color)
 
         if result:
             for key, value in result.items():
@@ -188,12 +215,10 @@ class GuiController:
         if self.window is None:
             return
 
-        current_item = self.window.step_list.currentItem()
-        if current_item is None:
+        step_name = self.window.selected_step_name()
+        if not step_name:
             self._append_log("No step selected.")
             return
-
-        step_name = current_item.text()
         step_names = self.runner.get_step_names()
         if step_name not in step_names:
             self._append_log(f"ERROR: Unknown step '{step_name}'.")
@@ -222,6 +247,16 @@ class GuiController:
             except Exception as exc:
                 traceback.print_exc()
                 self._append_latest_action_result()
+                if self.window is not None:
+                    status_text, status_color = self._classify_step_result(
+                        self.runner.get_current_step_name(),
+                        error_message=str(exc),
+                    )
+                    self.window.set_step_result(
+                        self.runner.get_current_step_name(),
+                        status_text,
+                        status_color,
+                    )
                 self._append_log(
                     f"ERROR during auto-run at step '{self.runner.get_current_step_name()}': {exc}"
                 )
@@ -231,12 +266,10 @@ class GuiController:
         if self.window is None:
             return
 
-        current_item = self.window.step_list.currentItem()
-        if current_item is None:
+        step_name = self.window.selected_step_name()
+        if not step_name:
             self._append_log("No step selected.")
             return
-
-        step_name = current_item.text()
 
         try:
             self._apply_trace_mode_to_config_if_ready()
@@ -247,6 +280,12 @@ class GuiController:
         except Exception as exc:
             traceback.print_exc()
             self._append_latest_action_result()
+            if self.window is not None:
+                status_text, status_color = self._classify_step_result(
+                    step_name,
+                    error_message=str(exc),
+                )
+                self.window.set_step_result(step_name, status_text, status_color)
             self._append_log(f"ERROR while running selected step '{step_name}': {exc}")
 
     def on_reset(self) -> None:
@@ -257,6 +296,7 @@ class GuiController:
             self.window.log_box.clear()
             self.window.image_label.clear()
             self.window.image_label.setText("No image loaded")
+            self.window.clear_step_results()
 
         self._append_log("Pipeline reset.")
         self._append_log(f"Current step: {self.runner.get_current_step_name()}")

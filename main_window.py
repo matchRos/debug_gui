@@ -3,14 +3,16 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QListWidget,
     QMainWindow,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QBrush
 
 
 class MainWindow(QMainWindow):
@@ -25,7 +27,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Cable Routing Debug Pipeline")
         self.resize(1400, 800)
 
-        self.step_list = QListWidget()
+        self.step_table = QTableWidget()
+        self.step_table.setColumnCount(2)
+        self.step_table.setHorizontalHeaderLabels(["Step", "Result"])
+        self.step_table.verticalHeader().setVisible(False)
+        self.step_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.step_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.step_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.step_table.setAlternatingRowColors(True)
+        self.step_table.horizontalHeader().setStretchLastSection(True)
+        self.step_table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignLeft | Qt.AlignVCenter
+        )
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
 
@@ -61,7 +74,7 @@ class MainWindow(QMainWindow):
 
         left_layout = QVBoxLayout()
         left_layout.addWidget(QLabel("Pipeline Steps"))
-        left_layout.addWidget(self.step_list)
+        left_layout.addWidget(self.step_table)
 
         center_layout = QVBoxLayout()
         center_layout.addWidget(QLabel("Logs"))
@@ -95,6 +108,53 @@ class MainWindow(QMainWindow):
         self.trace_mode_combo.currentIndexChanged.connect(
             self.controller.on_trace_start_mode_changed
         )
+
+    def populate_step_table(self, step_names) -> None:
+        self.step_table.setRowCount(len(step_names))
+        for row, step_name in enumerate(step_names):
+            name_item = QTableWidgetItem(step_name)
+            result_item = QTableWidgetItem("")
+            self.step_table.setItem(row, 0, name_item)
+            self.step_table.setItem(row, 1, result_item)
+        self.step_table.resizeColumnsToContents()
+
+    def selected_step_name(self) -> str:
+        row = self.step_table.currentRow()
+        if row < 0:
+            return ""
+        item = self.step_table.item(row, 0)
+        return item.text() if item is not None else ""
+
+    def set_current_step(self, step_name: str) -> None:
+        for row in range(self.step_table.rowCount()):
+            item = self.step_table.item(row, 0)
+            if item is not None and item.text() == step_name:
+                self.step_table.selectRow(row)
+                self.step_table.scrollToItem(item)
+                return
+
+    def clear_step_results(self) -> None:
+        for row in range(self.step_table.rowCount()):
+            item = self.step_table.item(row, 1)
+            if item is None:
+                item = QTableWidgetItem("")
+                self.step_table.setItem(row, 1, item)
+            item.setText("")
+            item.setBackground(QBrush())
+
+    def set_step_result(self, step_name: str, text: str, color_hex: str) -> None:
+        for row in range(self.step_table.rowCount()):
+            name_item = self.step_table.item(row, 0)
+            if name_item is None or name_item.text() != step_name:
+                continue
+            result_item = self.step_table.item(row, 1)
+            if result_item is None:
+                result_item = QTableWidgetItem("")
+                self.step_table.setItem(row, 1, result_item)
+            result_item.setText(text)
+            result_item.setBackground(QBrush(QColor(color_hex)))
+            self.step_table.resizeColumnToContents(0)
+            return
 
     def ask_save_trace_path(self) -> str:
         path, _ = QFileDialog.getSaveFileName(
