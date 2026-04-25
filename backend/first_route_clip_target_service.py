@@ -188,7 +188,10 @@ class FirstRouteClipTargetService:
         elif clip_type == CLIP_TYPE_U_CLIP:
             mode = "u_clip_entry"
             target_px, secondary_target_px = build_u_clip_entry_pixels(
+                state=state,
                 curr_clip=curr_clip,
+                primary_arm=primary_arm,
+                secondary_arm=secondary_arm,
                 clip_type_config=clip_type_config,
             )
         else:
