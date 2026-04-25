@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped
 from cable_routing.debug_gui.pipeline.arm_motion_utils import (
     is_dual_arm_grasp,
     pose_to_msg,
+    wait_for_moveit_motion_result,
 )
 from cable_routing.debug_gui.pipeline.base_step import BaseStep
 from cable_routing.debug_gui.pipeline.state import PipelineState
@@ -93,11 +94,13 @@ class RobotMotionStep(BaseStep):
             self.pub_left.publish(left_msg)
             rospy.sleep(stagger_delay_s)
             self.pub_right.publish(right_msg)
+            motion_result = wait_for_moveit_motion_result(["left", "right"])
 
             state.robot_target_sent = True
 
             return {
                 "target_sent": True,
+                "motion_result": motion_result,
                 "arms": ["left", "right"],
                 "distance_xyz": dist_xyz,
                 "left_position": [
@@ -136,11 +139,13 @@ class RobotMotionStep(BaseStep):
         else:
             msg.pose.position.z += 0.1  # TODO: Temporary hack, fix this later
             self.pub_right.publish(msg)
+        motion_result = wait_for_moveit_motion_result([arm])
 
         state.robot_target_sent = True
 
         return {
             "target_sent": True,
+            "motion_result": motion_result,
             "arms": [arm],
             "distance_xyz": dist_xyz,
             "left_position": (

@@ -5,6 +5,7 @@ import rospy
 from geometry_msgs.msg import PoseStamped
 from scipy.spatial.transform import Rotation as R
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Bool, String
 from cable_routing.debug_gui.backend.planes import ensure_min_plane_height, get_routing_plane
 
 # Internal planning frame (homography / board geometry).
@@ -371,6 +372,193 @@ def wait_until_robot_settled(
                 stable_since = None
     finally:
         sub.unregister()
+
+
+def wait_for_robot_motion_then_settle(
+    topic: str = "/joint_states",
+    start_timeout_sec: float = 8.0,
+    settle_timeout_sec: float = 45.0,
+    poll_rate_hz: float = 30.0,
+    motion_start_delta_rad: float = 0.01,
+    still_time_sec: float = 0.35,
+    position_delta_rad: float = 0.004,
+    joint_indices: Optional[List[int]] = None,
+) -> None:
+    """
+    Wait until motion is actually observed after a command, then wait until the
+    robot settles again.
+
+    This avoids reporting "completed" immediately in cases where the target was
+    only published but the joints have not started moving yet.
+    """
+    latest: List[Optional[JointState]] = [None]
+    serial = [0]
+
+    def _cb(msg: JointState) -> None:
+        latest[0] = msg
+        serial[0] += 1
+
+    sub = rospy.Subscriber(topic, JointState, _cb, queue_size=1)
+    rate = rospy.Rate(poll_rate_hz)
+
+    try:
+        # Acquire a baseline sample first.
+        baseline: Optional[np.ndarray] = None
+        baseline_deadline = rospy.Time.now().to_sec() + 2.0
+        while not rospy.is_shutdown() and baseline is None:
+            if rospy.Time.now().to_sec() > baseline_deadline:
+                raise RuntimeError(
+                    f"Timeout waiting for baseline joint state on {topic}."
+                )
+            rate.sleep()
+            msg = latest[0]
+            if msg is None or not msg.position:
+                continue
+            pos_full = np.asarray(msg.position, dtype=float)
+            baseline = pos_full[joint_indices] if joint_indices is not None else pos_full
+
+        # Wait until real movement starts.
+        start_deadline = rospy.Time.now().to_sec() + start_timeout_sec
+        motion_started = False
+        while not rospy.is_shutdown() and not motion_started:
+            if rospy.Time.now().to_sec() > start_deadline:
+                raise RuntimeError(
+                    f"Timeout ({start_timeout_sec}s) waiting for robot motion start on {topic}."
+                )
+            rate.sleep()
+            msg = latest[0]
+            if msg is None or not msg.position:
+                continue
+            pos_full = np.asarray(msg.position, dtype=float)
+            pos = pos_full[joint_indices] if joint_indices is not None else pos_full
+            delta_from_baseline = float(np.max(np.abs(pos - baseline)))
+            if delta_from_baseline >= motion_start_delta_rad:
+                motion_started = True
+
+        # Then wait for the robot to settle at the new target.
+        prev_pos: Optional[np.ndarray] = None
+        last_serial = -1
+        stable_since: Optional[float] = None
+        settle_deadline = rospy.Time.now().to_sec() + settle_timeout_sec
+        while not rospy.is_shutdown():
+            if rospy.Time.now().to_sec() > settle_deadline:
+                raise RuntimeError(
+                    f"Timeout ({settle_timeout_sec}s) waiting for robot to settle on {topic}."
+                )
+            rate.sleep()
+            msg = latest[0]
+            if msg is None or not msg.position:
+                continue
+
+            seq = serial[0]
+            if seq == last_serial:
+                continue
+            last_serial = seq
+
+            pos_full = np.asarray(msg.position, dtype=float)
+            pos = pos_full[joint_indices] if joint_indices is not None else pos_full
+
+            if prev_pos is None:
+                prev_pos = pos.copy()
+                continue
+
+            delta = float(np.max(np.abs(pos - prev_pos)))
+            prev_pos = pos.copy()
+            now = rospy.Time.now().to_sec()
+
+            if delta < position_delta_rad:
+                if stable_since is None:
+                    stable_since = now
+                elif now - stable_since >= still_time_sec:
+                    return
+            else:
+                stable_since = None
+    finally:
+        sub.unregister()
+
+
+def wait_for_moveit_motion_result(
+    arms: List[str],
+    timeout_sec: float = 45.0,
+    poll_rate_hz: float = 20.0,
+) -> dict:
+    """
+    Wait for moveit status topics published by yumi_moveit_pose_topics.py.
+
+    Expected topics per arm:
+      /yumi/rob{l,r}/moveit_status   (std_msgs/String)
+      /yumi/rob{l,r}/moveit_arrived  (std_msgs/Bool)
+    """
+    arm_suffix = {"left": "l", "right": "r"}
+    latest_status = {arm: "" for arm in arms}
+    latest_arrived = {arm: False for arm in arms}
+
+    subs = []
+
+    def _make_status_cb(arm_name: str):
+        def _cb(msg: String) -> None:
+            latest_status[arm_name] = str(msg.data)
+
+        return _cb
+
+    def _make_arrived_cb(arm_name: str):
+        def _cb(msg: Bool) -> None:
+            latest_arrived[arm_name] = bool(msg.data)
+
+        return _cb
+
+    for arm in arms:
+        suffix = arm_suffix[arm]
+        subs.append(
+            rospy.Subscriber(
+                f"/yumi/rob{suffix}/moveit_status",
+                String,
+                _make_status_cb(arm),
+                queue_size=1,
+            )
+        )
+        subs.append(
+            rospy.Subscriber(
+                f"/yumi/rob{suffix}/moveit_arrived",
+                Bool,
+                _make_arrived_cb(arm),
+                queue_size=1,
+            )
+        )
+
+    deadline = rospy.Time.now().to_sec() + timeout_sec
+    rate = rospy.Rate(poll_rate_hz)
+    try:
+        while not rospy.is_shutdown():
+            if rospy.Time.now().to_sec() > deadline:
+                raise RuntimeError(
+                    f"Timeout ({timeout_sec}s) waiting for moveit motion result for arms {arms}."
+                )
+
+            all_done = True
+            for arm in arms:
+                status = latest_status[arm].lower().strip()
+                arrived = latest_arrived[arm]
+
+                if status.startswith("timeout") or "failed" in status or status.startswith(
+                    "error"
+                ):
+                    raise RuntimeError(f"MoveIt {arm} arm failed: {latest_status[arm]}")
+
+                if not arrived and status != "succeeded":
+                    all_done = False
+
+            if all_done:
+                return {
+                    "arms": list(arms),
+                    "status": {arm: latest_status[arm] for arm in arms},
+                    "arrived": {arm: latest_arrived[arm] for arm in arms},
+                }
+
+            rate.sleep()
+    finally:
+        for sub in subs:
+            sub.unregister()
 
 
 def enforce_pose_min_height(
