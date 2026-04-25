@@ -58,6 +58,8 @@ class PipelineState:
     # Metadata / logging
     logs: List[str] = field(default_factory=list)
     finished_steps: List[str] = field(default_factory=list)
+    action_feedback: Dict[str, Any] = field(default_factory=dict)
+    action_history: List[Any] = field(default_factory=list)
 
     def log(self, message: str) -> None:
         """
@@ -100,3 +102,5 @@ class PipelineState:
 
         self.logs.clear()
         self.finished_steps.clear()
+        self.action_feedback.clear()
+        self.action_history.clear()
