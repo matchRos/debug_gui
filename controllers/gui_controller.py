@@ -76,6 +76,22 @@ class GuiController:
         if self.window is not None:
             self.window.log_box.append(message)
 
+    def _append_latest_action_result(self) -> None:
+        history = getattr(self.state, "action_history", None)
+        if not history:
+            return
+
+        action_result = history[-1]
+        self._append_log(
+            f"[action] {action_result.action_name} -> {action_result.status.value}"
+        )
+        if action_result.duration_s is not None:
+            self._append_log(f"[action] duration_s: {action_result.duration_s:.3f}")
+        if action_result.message:
+            self._append_log(f"[action] message: {action_result.message}")
+        if action_result.error_type:
+            self._append_log(f"[action] error_type: {action_result.error_type}")
+
     def _update_step_highlight(self) -> None:
         if self.window is None:
             return
@@ -142,6 +158,7 @@ class GuiController:
 
     def _handle_step_result(self, step_name: str, result: Dict[str, Any]) -> None:
         self._append_log(f"Finished step: {step_name}")
+        self._append_latest_action_result()
 
         if result:
             for key, value in result.items():
@@ -153,12 +170,14 @@ class GuiController:
 
     def on_next_step(self) -> None:
         self._apply_trace_mode_to_config_if_ready()
+        self._append_log(f"Running action: {self.runner.get_current_step_name()}")
         try:
             step_name, result = self.runner.run_next(self.state)
             self._handle_step_result(step_name, result)
             self._sync_trace_mode_combo_from_config()
         except Exception as exc:
             traceback.print_exc()
+            self._append_latest_action_result()
             self._append_log(f"ERROR while running next step: {exc}")
 
     def on_auto_run_to_selected(self) -> None:
@@ -194,11 +213,15 @@ class GuiController:
         while self.runner.has_next() and self.runner.current_idx <= target_idx:
             try:
                 self._apply_trace_mode_to_config_if_ready()
+                self._append_log(
+                    f"Running action: {self.runner.get_current_step_name()}"
+                )
                 executed_name, result = self.runner.run_next(self.state)
                 self._handle_step_result(executed_name, result)
                 self._sync_trace_mode_combo_from_config()
             except Exception as exc:
                 traceback.print_exc()
+                self._append_latest_action_result()
                 self._append_log(
                     f"ERROR during auto-run at step '{self.runner.get_current_step_name()}': {exc}"
                 )
@@ -217,11 +240,13 @@ class GuiController:
 
         try:
             self._apply_trace_mode_to_config_if_ready()
+            self._append_log(f"Running action: {step_name}")
             executed_name, result = self.runner.run_step_by_name(self.state, step_name)
             self._handle_step_result(executed_name, result)
             self._sync_trace_mode_combo_from_config()
         except Exception as exc:
             traceback.print_exc()
+            self._append_latest_action_result()
             self._append_log(f"ERROR while running selected step '{step_name}': {exc}")
 
     def on_reset(self) -> None:
